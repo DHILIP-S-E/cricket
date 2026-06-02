@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient, useMutation } from "../lib/query";
 import {
   Gavel, TrendingUp, AlertCircle, ChevronRight, Loader2,
-  Play, Pause, SkipForward, Hammer, RotateCcw,
+  Play, Pause, SkipForward, Hammer, RotateCcw, Bot,
 } from "lucide-react";
 import { auctionApi } from "../api/cricket";
 import type { AuctionEngineState, AdvisorResult } from "../api/cricket";
@@ -79,6 +79,14 @@ export function AuctionRoom() {
   const tickM = useMutation({
     mutationFn: () => auctionApi.tick(SESSION_ID),
     onSuccess: (r) => apply(r.data),
+    onError: (err) => {
+      // A failed tick must halt auto-play, otherwise the interval keeps
+      // hammering the endpoint (the 409 "Auction not open" flood).
+      setPlaying(false);
+      // 409 = engine state was lost (e.g. backend restarted/reloaded).
+      // Drop the local engine so the "Start Auction" button returns.
+      if ((err as { status?: number }).status === 409) setEngine(null);
+    },
   });
   const bidM = useMutation({
     mutationFn: (amount: number) => auctionApi.engineBid(SESSION_ID, myFranchiseId, amount),
@@ -87,6 +95,10 @@ export function AuctionRoom() {
   const passM = useMutation({
     mutationFn: () => auctionApi.passLot(SESSION_ID),
     onSuccess: (r) => apply(r.data),
+  });
+  const autopilotM = useMutation({
+    mutationFn: (on: boolean) => auctionApi.setAutopilot(SESSION_ID, on),
+    onSuccess: (r) => { apply(r.data); if (r.data?.autopilot) setPlaying(true); },
   });
 
   // Auto-play: tick on an interval until the auction finishes.
@@ -172,6 +184,18 @@ export function AuctionRoom() {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-elevated border border-surface-border text-text-secondary text-xs font-semibold hover:text-text-primary transition-colors"
             >
               <RotateCcw size={13} /> Restart
+            </button>
+            <button
+              onClick={() => autopilotM.mutate(!engine?.autopilot)}
+              disabled={engine?.finished}
+              title="Let the AI agent bid for your franchise"
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 ${
+                engine?.autopilot
+                  ? "bg-brand text-white"
+                  : "bg-surface-elevated border border-surface-border text-text-secondary hover:text-brand"
+              }`}
+            >
+              <Bot size={13} /> {engine?.autopilot ? "Auto-pilot ON" : "Auto-pilot"}
             </button>
             <div className="flex items-center gap-1.5 ml-auto">
               <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Speed</span>

@@ -187,7 +187,7 @@ function PlayingXICard({ xi }: { xi: any }) {
                   {p.is_overseas && <span className="ml-1.5"><Badge label="OS" variant="purple" /></span>}
                 </td>
                 <td className="py-2"><RoleBadge role={p.playing_role} /></td>
-                <td className="text-right font-mono text-xs text-brand font-bold py-2">{p.ai_score.toFixed(0)}</td>
+                <td className="text-right font-mono text-xs text-brand font-bold py-2">{p.ai_score != null ? p.ai_score.toFixed(0) : "—"}</td>
               </tr>
             ))}
           </tbody>

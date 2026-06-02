@@ -1,0 +1,17 @@
+.env
+cloudrun.env.yaml
+test.db
+*.db
+*_log.txt
+*_err.txt
+agg_*.txt
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+cricsheet_data/
+catboost_info/
+tests/
+.git/
+.venv/
+venv/

@@ -64,6 +64,7 @@ export function LiveMatch() {
   const [speedMs, setSpeedMs] = useState(900);
   const [lastBall, setLastBall] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<string | null>(null);
+  const [oppPlan, setOppPlan] = useState<string | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ["live", mid] });
 
   const startSim = useMutation({
@@ -78,6 +79,7 @@ export function LiveMatch() {
         const lb = d.last_ball;
         setLastBall(lb.wicket ? "W" : lb.extra ? `${lb.label} (extra)` : String(lb.runs));
       }
+      if (d?.opposition_plan) setOppPlan(d.opposition_plan);
       if (d?.innings_over) { setOutcome(d.outcome ?? "Innings complete"); setPlaying(false); }
       refresh();
     },
@@ -198,6 +200,16 @@ export function LiveMatch() {
           <RotateCcw size={13} /> Reset
         </button>
 
+        {oppPlan && (
+          <div className="flex items-center gap-1.5 ml-2 px-2 py-1 rounded-lg bg-surface-elevated border border-surface-border">
+            <Zap size={11} className="text-amber-500" />
+            <span className="text-[10px] text-text-secondary font-bold">
+              Opposition: <span className={
+                oppPlan === "attack" ? "text-red-500" : oppPlan === "contain" ? "text-brand" : "text-text-primary"
+              }>{oppPlan === "attack" ? "Attacking — chasing wickets" : oppPlan === "contain" ? "Containing — drying up runs" : "Balanced"}</span>
+            </span>
+          </div>
+        )}
         <div className="flex items-center gap-1.5 ml-auto">
           <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Speed</span>
           {[{ l: "0.5x", v: 1600 }, { l: "1x", v: 900 }, { l: "2x", v: 400 }, { l: "Fast", v: 150 }].map((s) => (

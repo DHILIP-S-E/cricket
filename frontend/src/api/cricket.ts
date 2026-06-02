@@ -54,6 +54,8 @@ export const auctionApi = {
     api.post<APIResponse<AuctionEngineState>>(`/auction/sessions/${sessionId}/pass`, {}),
   advisor: (sessionId: string, franchiseId: string) =>
     api.get<APIResponse<AdvisorResult>>(`/auction/sessions/${sessionId}/advisor?franchise_id=${franchiseId}`),
+  setAutopilot: (sessionId: string, on: boolean) =>
+    api.post<APIResponse<AuctionEngineState>>(`/auction/sessions/${sessionId}/autopilot?on=${on}`, {}),
 };
 
 export interface AdvisorResult {
@@ -83,6 +85,7 @@ export interface AuctionEngineState {
   events: AuctionEngineEvent[];
   last_result: { player_name: string; price_cr: number | null; sold_to_name: string | null; sold: boolean } | null;
   finished: boolean;
+  autopilot: boolean;
   total_sold: number;
   total_unsold: number;
 }
@@ -117,6 +120,7 @@ export interface SimStep {
   balls_remaining?: number;
   target?: number;
   last_ball?: { label: string; runs: number; wicket: boolean; extra: boolean } | null;
+  opposition_plan?: string | null;   // "attack" | "contain" | "balanced"
 }
 
 // ─── Pre-Match ────────────────────────────────────────────────────────────────
@@ -134,6 +138,15 @@ export const prematchApi = {
     api.get<APIResponse<PlayingXIRecommendation>>(
       `/prematch/${matchId}/xi-recommendation?franchise_id=${franchiseId}&season_id=${seasonId}`
     ),
+};
+
+// ─── AI Scout (Gemini tool-using agent) ────────────────────────────────────────
+
+export interface ScoutStep { tool: string; args: Record<string, unknown>; result: unknown }
+export interface ScoutAnswer { available: boolean; answer: string; provider: string; steps: ScoutStep[] }
+
+export const scoutApi = {
+  ask: (question: string) => api.post<APIResponse<ScoutAnswer>>("/scout/ask", { question }),
 };
 
 // ─── Tournaments ──────────────────────────────────────────────────────────────

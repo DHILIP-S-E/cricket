@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  Gavel, Activity, BarChart2, Users, Trophy, LayoutDashboard, LogOut, Sun, Moon, Sparkles,
+  Gavel, Activity, BarChart2, Users, Trophy, LayoutDashboard, LogOut, Sun, Moon, Sparkles, Bot,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme, type Franchise } from "../../context/ThemeContext";
@@ -11,6 +11,7 @@ const NAV = [
   { to: "/prematch",    label: "Pre-Match Planner", icon: BarChart2 },
   { to: "/live",        label: "Live Match",        icon: Activity },
   { to: "/simulator",   label: "What-If Simulator", icon: Sparkles },
+  { to: "/scout",       label: "AI Scout",          icon: Bot },
   { to: "/players",     label: "Players",           icon: Users },
   { to: "/tournaments", label: "Tournaments",       icon: Trophy },
 ];

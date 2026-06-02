@@ -11,7 +11,7 @@ from core.logging_config import configure_logging
 from middleware.request_id import RequestIDMiddleware
 from routers import auth, user
 from routers import players, auction, prematch, live, tournaments, ws
-from routers import analytics
+from routers import analytics, scout
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -55,6 +55,7 @@ app.include_router(prematch.router,    prefix="/api/v1")
 app.include_router(live.router,        prefix="/api/v1")
 app.include_router(tournaments.router, prefix="/api/v1")
 app.include_router(analytics.router,   prefix="/api/v1")
+app.include_router(scout.router,        prefix="/api/v1")
 
 # ── WebSockets (no /api/v1 prefix — direct path routing) ──────────
 app.include_router(ws.router)

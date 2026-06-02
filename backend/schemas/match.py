@@ -66,6 +66,7 @@ class PlayingXIPlayerOut(OurBaseModel):
     full_name: str
     playing_role: str
     batting_position: int | None = None
+    ai_score: float | None = None
     is_captain: bool
     is_vice_captain: bool
     is_wicketkeeper: bool

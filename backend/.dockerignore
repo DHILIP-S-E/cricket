@@ -1,0 +1,26 @@
+# Secrets & local data — provide these via Cloud Run env vars / Secret Manager
+.env
+cloudrun.env.yaml
+test.db
+*.db
+
+# Logs & caches
+*_log.txt
+*_err.txt
+agg_*.txt
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+
+# Large raw ingestion data (not needed at runtime — models are pre-trained)
+cricsheet_data/
+catboost_info/
+
+# Keep ml_artifacts/ — the trained .joblib models ARE needed at runtime.
+
+# Dev tooling
+tests/
+.git/
+.venv/
+venv/

@@ -110,13 +110,33 @@ def start_simulation(db: Session, match_id: UUID) -> dict:
     }
 
 
-def _simulate_outcome(over_number: int) -> tuple[str, int, bool, bool]:
-    """Returns (label, runs, is_wicket, is_extra). Death overs raise risk a bit."""
+def _captain_posture(win_prob: float) -> str:
+    """Opposition Captain agent: choose a plan based on the chase situation.
+
+    If the batting side is on top → ATTACK (seek wickets). If they're behind →
+    CONTAIN (dry up runs). Otherwise hold a BALANCED line."""
+    if win_prob >= 0.60:
+        return "attack"
+    if win_prob <= 0.40:
+        return "contain"
+    return "balanced"
+
+
+# weight multipliers per posture, aligned to _OUTCOMES order [0,1,2,3,4,6,W,extra]
+_POSTURE_MULT = {
+    "attack":   [0.85, 0.9, 1.0, 1.0, 1.15, 1.3, 1.7, 1.0],   # more boundaries + more wickets
+    "contain":  [1.4, 1.0, 0.9, 0.8, 0.6, 0.5, 0.9, 1.0],     # more dots, fewer boundaries
+    "balanced": [1, 1, 1, 1, 1, 1, 1, 1],
+}
+
+
+def _simulate_outcome(over_number: int, posture: str = "balanced") -> tuple[str, int, bool, bool]:
+    """Returns (label, runs, is_wicket, is_extra), shaped by over phase + captain posture."""
     weights = [w for _, _, w in _OUTCOMES]
     if over_number >= 15:  # death overs: more boundaries and more wickets
-        weights = [w * m for w, m in zip(
-            weights, [0.85, 0.95, 1.0, 1.0, 1.4, 1.6, 1.5, 1.0]
-        )]
+        weights = [w * m for w, m in zip(weights, [0.85, 0.95, 1.0, 1.0, 1.4, 1.6, 1.5, 1.0])]
+    mult = _POSTURE_MULT.get(posture, _POSTURE_MULT["balanced"])
+    weights = [w * m for w, m in zip(weights, mult)]
     label, runs, _ = random.choices(_OUTCOMES, weights=weights, k=1)[0]
     return label, runs, label == "W", label == "extra"
 
@@ -136,7 +156,9 @@ def step_ball(db: Session, match_id: UUID) -> dict:
     if score >= target or wickets >= 10 or (over * 6 + ball) >= TOTAL_OVERS * 6:
         return _result(db, match_id, live, finished=True)
 
-    label, runs, is_wicket, is_extra = _simulate_outcome(over)
+    # Opposition Captain agent picks its plan from the current win probability.
+    posture = _captain_posture(float(live.win_probability) if live.win_probability else 0.5)
+    label, runs, is_wicket, is_extra = _simulate_outcome(over, posture)
 
     score += runs
     if is_wicket:
@@ -172,7 +194,7 @@ def step_ball(db: Session, match_id: UUID) -> dict:
     live = get_live_state(db, match_id)
     return _result(db, match_id, live, last_ball={
         "label": label, "runs": runs, "wicket": is_wicket, "extra": is_extra,
-    })
+    }, opposition_plan=posture)
 
 
 def reset_simulation(db: Session, match_id: UUID) -> dict:
@@ -181,7 +203,7 @@ def reset_simulation(db: Session, match_id: UUID) -> dict:
 
 
 def _result(db: Session, match_id: UUID, live, last_ball: dict | None = None,
-            finished: bool = False) -> dict:
+            finished: bool = False, opposition_plan: str | None = None) -> dict:
     target = live.target_runs or DEFAULT_TARGET
     score = live.batting_team_score
     wickets = live.batting_team_wickets
@@ -216,4 +238,5 @@ def _result(db: Session, match_id: UUID, live, last_ball: dict | None = None,
         "balls_remaining": balls_remaining,
         "target": target,
         "last_ball": last_ball,
+        "opposition_plan": opposition_plan,
     }

@@ -58,6 +58,49 @@ def complete(system: str, user: str, max_tokens: int = 400) -> str | None:
     return None
 
 
+def complete_json(system: str, user: str, max_tokens: int = 600) -> dict | None:
+    """Structured output — returns a parsed JSON object, or None on failure.
+
+    Uses Gemini's JSON response mode when available; otherwise instructs the
+    model to emit JSON and parses it defensively.
+    """
+    import json
+    import re
+
+    if _PROVIDER == "gemini":
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=_GEMINI_KEY)
+            model = genai.GenerativeModel(_GEMINI_MODEL, system_instruction=system)
+            resp = model.generate_content(
+                user,
+                generation_config={
+                    "max_output_tokens": max_tokens,
+                    "temperature": 0.4,
+                    "response_mime_type": "application/json",
+                },
+            )
+            return json.loads((getattr(resp, "text", "") or "").strip())
+        except Exception:
+            logger.exception("Gemini JSON completion failed")
+            return None
+
+    # Anthropic / OpenAI: ask for JSON, then extract the first {...} block.
+    raw = complete(system + "\nRespond with ONLY a single valid JSON object.", user, max_tokens)
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except Exception:
+                return None
+    return None
+
+
 def _gemini(system: str, user: str, max_tokens: int) -> str | None:
     try:
         import google.generativeai as genai

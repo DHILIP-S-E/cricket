@@ -110,6 +110,9 @@ def open_auction(db: Session, session_id: UUID, user_franchise_id: str | None) -
         "agent_max": {},        # franchise_id -> max bid this lot
         "events": [],
         "last_result": None,
+        "autopilot": False,     # AI bids for the user franchise autonomously
+        "user_max": 0.0,        # cached autopilot ceiling for the current lot
+        "user_max_for": None,   # player_id the cache is valid for
     }
     return _present_next_lot(db, session_id)
 
@@ -196,6 +199,17 @@ def tick(db: Session, session_id: UUID) -> dict:
     highest = str(session.current_highest_bidder_id) if session.current_highest_bidder_id else None
     inc = st["increment"]
     next_price = round((price + inc) if price is not None else base, 2)
+
+    # Auto-pilot: the AI bids on the user's behalf (perceive → reason → act).
+    user_fid = st.get("user_franchise_id")
+    if st.get("autopilot") and user_fid and highest != user_fid:
+        umax = _user_autopilot_max(db, session_id, lot)
+        if umax >= next_price and _has_room(db, session_id, user_fid):
+            create_bid(db, lot.id, UUID(user_fid), next_price)
+            st["ticks_idle"] = 0
+            st["events"] = ([{"actor": "You (auto)", "action": "bid", "amount": next_price,
+                              "player": lot.player.full_name}] + st["events"])[:RECENT_EVENTS]
+            return _snapshot(db, session_id)
 
     # Which rival agent (if any) is willing to bid next_price?
     candidates = [
@@ -322,6 +336,56 @@ def _resolve_unsold(db: Session, session_id: UUID, lot: AuctionLot) -> dict:
     return _snapshot(db, session_id)
 
 
+# ── Auto-pilot: an LLM/ML agent that bids for the user autonomously ───────
+
+def set_autopilot(db: Session, session_id: UUID, on: bool) -> dict:
+    st = _ENGINE.get(str(session_id))
+    if not st:
+        return {"error": "Auction not open."}
+    st["autopilot"] = bool(on)
+    st["user_max_for"] = None  # force re-evaluation of the ceiling
+    return _snapshot(db, session_id)
+
+
+def _user_autopilot_max(db: Session, session_id: UUID, lot: AuctionLot) -> float:
+    """The autopilot's bid ceiling for the current lot (cached per lot).
+
+    ML gives the ceiling; if an LLM key is set, the Advisor's BID/HOLD/PASS
+    call gates it (PASS → don't bid, HOLD → bid only up to fair value)."""
+    st = _ENGINE[str(session_id)]
+    pid = str(lot.player_id)
+    if st.get("user_max_for") == pid:
+        return float(st.get("user_max", 0.0))
+
+    session = get_session(db, session_id)
+    fid = st["user_franchise_id"]
+    try:
+        rec = get_bid_recommendation(db, session_id, UUID(fid), lot.player_id, session.season_id)
+    except Exception:
+        rec = {"should_bid": False}
+    # Slight aggression so the autopilot competes with the rivals (who scale by persona).
+    umax = float(rec.get("recommended_max_bid_cr", 0)) * 1.2 if rec.get("should_bid") else 0.0
+
+    if llm_agent.llm_available() and umax > 0:
+        try:
+            adv = advisor(db, session_id, UUID(fid))
+            if adv.get("call") == "PASS":
+                umax = 0.0
+            elif adv.get("call") == "HOLD":
+                umax = min(umax, float(rec.get("fair_value_cr", umax)))
+        except Exception:
+            logger.exception("autopilot LLM gate failed")
+
+    # Never bid beyond the remaining budget.
+    ts = get_team_state(db, session_id, UUID(fid))
+    if ts:
+        umax = min(umax, float(ts.remaining_budget_cr))
+
+    st["user_max"] = round(umax, 2)
+    st["user_max_for"] = pid
+    return st["user_max"]
+
+
 # ── AI Advisor agent (LLM reasoning, grounded in the ML numbers) ──────────
 
 _ADVISOR_SYSTEM = (
@@ -435,6 +499,7 @@ def _snapshot(db: Session, session_id: UUID) -> dict:
         "events": st["events"][:RECENT_EVENTS],
         "last_result": st["last_result"],
         "finished": st["phase"] == "finished",
+        "autopilot": st.get("autopilot", False),
         "total_sold": session.total_players_sold,
         "total_unsold": session.total_players_unsold,
     }

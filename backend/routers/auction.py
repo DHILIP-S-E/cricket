@@ -16,7 +16,7 @@ from crud.auction import (
 from services.auction_service import get_bid_recommendation
 from services.auction_engine import (
     open_auction, tick as engine_tick, user_bid as engine_user_bid, pass_lot as engine_pass,
-    advisor as engine_advisor,
+    advisor as engine_advisor, set_autopilot as engine_autopilot,
 )
 from schemas.auction import (
     AuctionSessionOut, AuctionLotOut, TeamAuctionStateOut,
@@ -76,6 +76,15 @@ def pass_session(session_id: UUID, db: Session = Depends(get_db)):
 def auction_advisor(session_id: UUID, franchise_id: UUID = Query(...), db: Session = Depends(get_db)):
     """AI Advisor agent: LLM reasoning on the current lot (falls back to ML if no LLM key)."""
     return APIResponse(data=engine_advisor(db, session_id, franchise_id))
+
+
+@router.post("/sessions/{session_id}/autopilot", response_model=APIResponse[dict])
+def auction_autopilot(session_id: UUID, on: bool = Query(...), db: Session = Depends(get_db)):
+    """Toggle the AI auto-pilot agent — it bids for the user franchise autonomously."""
+    result = engine_autopilot(db, session_id, on)
+    if "error" in result:
+        raise HTTPException(status_code=409, detail=result["error"])
+    return APIResponse(data=result, message=f"Auto-pilot {'on' if on else 'off'}")
 
 
 @router.get("/sessions/active", response_model=APIResponse[list[AuctionSessionOut]])

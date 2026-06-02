@@ -9,6 +9,7 @@ import { AuctionRoom } from "./pages/AuctionRoom";
 import { PreMatch } from "./pages/PreMatch";
 import { LiveMatch } from "./pages/LiveMatch";
 import { WhatIfSimulator } from "./pages/WhatIfSimulator";
+import { Scout } from "./pages/Scout";
 import { Players } from "./pages/Players";
 import { Tournaments } from "./pages/Tournaments";
 
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="prematch/:matchId?" element={<PreMatch />} />
             <Route path="live/:matchId?" element={<LiveMatch />} />
             <Route path="simulator" element={<WhatIfSimulator />} />
+            <Route path="scout" element={<Scout />} />
             <Route path="players" element={<Players />} />
             <Route path="tournaments" element={<Tournaments />} />
           </Route>

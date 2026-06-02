@@ -12,6 +12,7 @@ from crud.player import (
     get_player_matchups_as_batter, get_player_matchups_as_bowler,
 )
 from ml.serve import predict_player_valuation
+from services.player_search import search as semantic_search
 from schemas.player import (
     PlayerOut, PlayerProfileOut, PlayerFormOut,
     PlayerRatingOut, PlayerValuationOut, PlayerMatchupOut,
@@ -19,6 +20,12 @@ from schemas.player import (
 from schemas.response import APIResponse, PaginatedResponse
 
 router = APIRouter(prefix="/players", tags=["Players"])
+
+
+@router.get("/scout-search", response_model=APIResponse[dict])
+def scout_search(q: str = Query(..., min_length=2), limit: int = 10, db: Session = Depends(get_db)):
+    """Semantic player search via Gemini embeddings (falls back to text match)."""
+    return APIResponse(data=semantic_search(db, q, limit))
 
 
 @router.get("", response_model=PaginatedResponse[PlayerOut])

@@ -6,6 +6,7 @@
 *.env
 !.env.example
 !**/.env.example
+**/cloudrun.env.yaml
 
 # Python
 **/__pycache__/

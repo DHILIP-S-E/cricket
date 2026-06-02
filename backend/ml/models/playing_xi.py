@@ -97,8 +97,12 @@ def select_xi(
     # Decision variables: x[i] = 1 if player i selected
     x = [model.NewBoolVar(f"x_{i}") for i in range(n)]
 
-    # Constraint 1: exactly 11 players
-    model.Add(sum(x) == 11)
+    # Squads should have 11+ players, but never make the model infeasible on
+    # a short squad — pick as many as we can up to 11.
+    target_size = min(11, n)
+
+    # Constraint 1: pick the target number of players
+    model.Add(sum(x) == target_size)
 
     # Constraint 2: at least 1 wicketkeeper
     wk_indices = [i for i, c in enumerate(candidates) if c.is_wicketkeeper]
@@ -109,11 +113,14 @@ def select_xi(
     overseas_indices = [i for i, c in enumerate(candidates) if c.is_overseas]
     model.Add(sum(x[i] for i in overseas_indices) <= overseas_slots)
 
-    # Constraint 4: at least 5 bowling options
+    # Constraint 4: at least 5 bowling options — clamped to what the squad
+    # actually has, so uniform/incomplete role data can't make the model
+    # infeasible (it would otherwise always fall back to greedy).
     bowling_indices = [i for i, c in enumerate(candidates) if c.is_bowling_option]
-    model.Add(sum(x[i] for i in bowling_indices) >= 5)
+    if bowling_indices:
+        model.Add(sum(x[i] for i in bowling_indices) >= min(5, len(bowling_indices)))
 
-    # Constraint 5: at least 4 batting specialists
+    # Constraint 5: at least 4 batting specialists — likewise clamped.
     batting_indices = [
         i for i, c in enumerate(candidates)
         if c.playing_role in (
@@ -121,7 +128,8 @@ def select_xi(
             "Wicket-keeper Batter", "Batting All-rounder",
         )
     ]
-    model.Add(sum(x[i] for i in batting_indices) >= 4)
+    if batting_indices:
+        model.Add(sum(x[i] for i in batting_indices) >= min(4, len(batting_indices)))
 
     # Objective: maximize total AI score
     model.Maximize(sum(scores_int[i] * x[i] for i in range(n)))
