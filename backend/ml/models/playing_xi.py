@@ -217,6 +217,11 @@ def _format_result(selected: list[PlayerCandidate]) -> dict:
     }
     ordered = sorted(selected, key=lambda c: (order_priority.get(c.playing_role, 9), -c.ai_score))
 
+    # Captain / vice-captain = top two by AI score within the selected XI.
+    by_score = sorted(selected, key=lambda c: -c.ai_score)
+    captain_id = by_score[0].player_id if by_score else None
+    vice_captain_id = by_score[1].player_id if len(by_score) > 1 else None
+
     return {
         "playing_xi": [
             {
@@ -226,6 +231,10 @@ def _format_result(selected: list[PlayerCandidate]) -> dict:
                 "batting_position": pos,
                 "ai_score": c.ai_score,
                 "is_overseas": c.is_overseas,
+                "is_captain": c.player_id == captain_id,
+                "is_vice_captain": c.player_id == vice_captain_id,
+                "is_wicketkeeper": c.is_wicketkeeper,
+                "is_impact_player": False,
             }
             for pos, c in enumerate(ordered, start=1)
         ],

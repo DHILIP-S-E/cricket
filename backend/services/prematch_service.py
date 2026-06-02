@@ -50,7 +50,7 @@ def get_xi_recommendation(
         squad_dicts.append({
             "player_id": str(player.id),
             "full_name": player.full_name,
-            "playing_role": str(player.playing_role),
+            "playing_role": player.playing_role.value,
             "is_overseas": s.is_overseas,
             "overall_rating": float(rating.overall_rating) if rating else 50,
             "form_score": float(form.form_score) if form else 0.5,
@@ -65,6 +65,8 @@ def get_xi_recommendation(
         if p["playing_role"] in ("Batting All-rounder", "Bowling All-rounder")
     ]
     impact_player = impact_candidates[0] if impact_candidates else None
+    if impact_player:
+        impact_player["is_impact_player"] = True
 
     return {
         "recommended_xi": result["playing_xi"],

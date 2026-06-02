@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation } from "../../../lib/query";
 import { useAuth } from "../../../context/AuthContext";
 import type { UserCreate } from "../../../types/user/user_types";
 import { userApi } from "../index";

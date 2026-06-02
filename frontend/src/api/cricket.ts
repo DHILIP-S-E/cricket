@@ -3,7 +3,7 @@ import type {
   APIResponse, PaginatedResponse,
   Player, PlayerProfile, PlayerForm, PlayerValuation, PlayerMatchup,
   AuctionSession, AuctionLot, TeamAuctionState, BidRecommendation, AuctionQueueItem,
-  LiveMatchState, LiveRecommendations, WinProbHistoryPoint,
+  LiveMatchState, LiveRecommendations, WinProbHistoryPoint, WhatIfScenario, WhatIfResult,
   WinProbability, PlayingXIRecommendation,
   Tournament, Season, PointsTableRow, Match,
 } from "../types/cricket";
@@ -52,7 +52,28 @@ export const liveApi = {
     api.get<APIResponse<{ current: number; batting_team_name: string; history: WinProbHistoryPoint[] }>>(`/live/${matchId}/win-probability`),
   recommendations: (matchId: string) => api.get<APIResponse<LiveRecommendations>>(`/live/${matchId}/recommendations`),
   bowlerRec: (matchId: string) => api.get<APIResponse<unknown>>(`/live/${matchId}/bowler-recommendation`),
+  simulate: (scenario: WhatIfScenario) =>
+    api.post<APIResponse<WhatIfResult>>("/live/simulate", scenario),
+  // Interactive ball-by-ball simulation
+  simStart: (matchId: string) => api.post<APIResponse<SimStep>>(`/live/${matchId}/sim/start`, {}),
+  simStep: (matchId: string) => api.post<APIResponse<SimStep>>(`/live/${matchId}/sim/step`, {}),
+  simReset: (matchId: string) => api.post<APIResponse<unknown>>(`/live/${matchId}/sim/reset`, {}),
 };
+
+export interface SimStep {
+  match_id: string;
+  innings_over: boolean;
+  outcome: string | null;
+  win_probability: number;
+  score?: number;
+  wickets?: number;
+  over?: number;
+  ball?: number;
+  runs_required?: number;
+  balls_remaining?: number;
+  target?: number;
+  last_ball?: { label: string; runs: number; wicket: boolean; extra: boolean } | null;
+}
 
 // ─── Pre-Match ────────────────────────────────────────────────────────────────
 

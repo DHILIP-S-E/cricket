@@ -82,6 +82,29 @@ class LiveRecommendationsOut(OurBaseModel):
     alert: str | None = None  # e.g. "Danger partnership: 50+ runs"
 
 
+class WhatIfScenarioIn(OurBaseModel):
+    target: int = 180
+    current_score: int = 0
+    wickets_fallen: int = 0
+    overs_completed: int = 0
+    balls_this_over: int = 0
+    total_overs: int = 20
+
+
+class WhatIfResultOut(OurBaseModel):
+    win_probability: float
+    chasing_team_win_prob: float
+    defending_team_win_prob: float
+    runs_required: int
+    balls_remaining: int
+    wickets_remaining: int
+    required_run_rate: float
+    current_run_rate: float
+    batting_risk_level: int
+    batting_strategy: str
+    alert: str | None = None
+
+
 class BallEventIn(OurBaseModel):
     match_id: UUID
     innings_number: int

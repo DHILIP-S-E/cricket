@@ -1,20 +1,24 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: "class",
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
         surface: {
-          DEFAULT: "#0f1117",
-          card: "#161b22",
-          elevated: "#1c2128",
-          border: "#30363d",
+          DEFAULT: "var(--color-surface-bg)",
+          card: "var(--color-surface-card)",
+          elevated: "var(--color-surface-elevated)",
+          border: "var(--color-surface-border)",
         },
         brand: {
-          DEFAULT: "#238636",
-          hover: "#2ea043",
-          muted: "#1a3a20",
+          DEFAULT: "var(--color-brand)",
+          hover: "var(--color-brand-hover)",
+          muted: "var(--color-brand-muted)",
         },
+        "text-primary": "var(--color-text-primary)",
+        "text-secondary": "var(--color-text-secondary)",
+        "text-tertiary": "var(--color-text-tertiary)",
         signal: {
           green: "#22c55e",
           amber: "#f59e0b",

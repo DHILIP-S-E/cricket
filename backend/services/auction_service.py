@@ -42,7 +42,10 @@ def get_bid_recommendation(
     overseas_remaining = team_state.overseas_slots_max - team_state.overseas_slots_used
 
     # Check hard constraints
-    is_overseas = player.nationality != "India"
+    # NOTE: source data has nationality == "Other" for everyone, so treat only
+    # explicitly non-India/Other nationalities as overseas (else every squad
+    # would hit the 4-overseas cap and the auction couldn't fill 25-man squads).
+    is_overseas = player.nationality not in ("India", "Other")
     if is_overseas and overseas_remaining <= 0:
         return {
             "should_bid": False,

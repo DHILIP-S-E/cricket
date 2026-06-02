@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "../lib/query";
 import { prematchApi } from "../api/cricket";
 import {
   Card, CardHeader, Stat, Badge, ConfidenceBadge, RoleBadge,
@@ -8,6 +8,7 @@ import {
 } from "../components/ui";
 import { Star } from "lucide-react";
 import { MatchPicker } from "../components/MatchPicker";
+import { useTheme } from "../context/ThemeContext";
 
 const FRANCHISE_ID = import.meta.env.VITE_FRANCHISE_ID ?? "";
 const SEASON_ID = import.meta.env.VITE_SEASON_ID ?? "";
@@ -15,6 +16,10 @@ const SEASON_ID = import.meta.env.VITE_SEASON_ID ?? "";
 export function PreMatch() {
   const { matchId } = useParams<{ matchId: string }>();
   const mid = matchId ?? "";
+  const { franchise: themeFranchise } = useTheme();
+
+  // Fallback to active theme if env VITE_FRANCHISE_ID is empty
+  const activeFranchiseId = FRANCHISE_ID || themeFranchise;
 
   const { data: wpRes, isLoading: wpLoading } = useQuery({
     queryKey: ["prematch", mid, "wp"],
@@ -23,9 +28,9 @@ export function PreMatch() {
   });
 
   const { data: xiRes, isLoading: xiLoading } = useQuery({
-    queryKey: ["prematch", mid, "xi", FRANCHISE_ID],
-    queryFn: () => prematchApi.xiRecommendation(mid, FRANCHISE_ID, SEASON_ID),
-    enabled: !!mid && !!FRANCHISE_ID && !!SEASON_ID,
+    queryKey: ["prematch", mid, "xi", activeFranchiseId],
+    queryFn: () => prematchApi.xiRecommendation(mid, activeFranchiseId, SEASON_ID),
+    enabled: !!mid && !!activeFranchiseId && !!SEASON_ID,
   });
 
   const wp = wpRes?.data;
@@ -42,7 +47,7 @@ export function PreMatch() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-surface text-text-primary">
       <PageHeader
         title="Pre-Match Planner"
         subtitle={wp ? `${wp.team1_name} vs ${wp.team2_name}` : "Loading match..."}
@@ -68,7 +73,7 @@ export function PreMatch() {
               <Card><div className="flex justify-center py-8"><Spinner /></div></Card>
             ) : xi ? (
               <PlayingXICard xi={xi} />
-            ) : !FRANCHISE_ID ? (
+            ) : !activeFranchiseId ? (
               <Card>
                 <EmptyState message="Set VITE_FRANCHISE_ID and VITE_SEASON_ID to get XI recommendation" />
               </Card>
@@ -100,20 +105,20 @@ function WinProbabilityCard({ wp }: { wp: any }) {
   return (
     <Card>
       <div className="flex items-center justify-between mb-3">
-        <CardHeader title="Pre-Match Win Probability" subtitle="Based on venue, form, head-to-head, and toss" />
+        <CardHeader title="Pre-Match Win Probability Model" subtitle="Based on venue statistics, franchise form, head-to-head records, and weather toss indexes" />
         <ConfidenceBadge confidence={wp.confidence} />
       </div>
       <WinProbBar team1={wp.team1_name} prob1={wp.team1_win_prob} team2={wp.team2_name} />
       <div className="grid grid-cols-2 gap-4 mt-4">
-        <div className="text-center p-3 rounded-lg bg-surface-elevated">
-          <p className="text-xs text-gray-500 mb-1">{wp.team1_name}</p>
-          <p className="text-3xl font-bold font-mono text-signal-green">
+        <div className="text-center p-4 rounded-xl bg-surface-elevated border border-surface-border shadow-inner">
+          <p className="text-xs text-text-secondary mb-1 font-bold">{wp.team1_name}</p>
+          <p className="text-3xl font-black font-mono text-brand">
             {Math.round(wp.team1_win_prob * 100)}%
           </p>
         </div>
-        <div className="text-center p-3 rounded-lg bg-surface-elevated">
-          <p className="text-xs text-gray-500 mb-1">{wp.team2_name}</p>
-          <p className="text-3xl font-bold font-mono text-blue-400">
+        <div className="text-center p-4 rounded-xl bg-surface-elevated border border-surface-border shadow-inner">
+          <p className="text-xs text-text-secondary mb-1 font-bold">{wp.team2_name}</p>
+          <p className="text-3xl font-black font-mono text-blue-500 dark:text-blue-400">
             {Math.round(wp.team2_win_prob * 100)}%
           </p>
         </div>
@@ -129,46 +134,64 @@ function PlayingXICard({ xi }: { xi: any }) {
 
   return (
     <Card>
-      <div className="flex items-center justify-between mb-3">
-        <CardHeader title="Recommended Playing XI" subtitle={xi.reasoning?.slice(0, 80) + "..."} />
-        <div className="flex gap-1">
-          <button onClick={() => setView("list")} className={`px-2 py-1 rounded text-xs ${view === "list" ? "bg-surface-elevated text-gray-200" : "text-gray-500 hover:text-gray-300"}`}>List</button>
-          <button onClick={() => setView("grid")} className={`px-2 py-1 rounded text-xs ${view === "grid" ? "bg-surface-elevated text-gray-200" : "text-gray-500 hover:text-gray-300"}`}>Grid</button>
+      <div className="flex items-center justify-between mb-3 border-b border-surface-border/50 pb-2">
+        <CardHeader title="Recommended Playing XI Squad" subtitle={xi.reasoning?.slice(0, 100) + "..."} />
+        <div className="flex gap-1 bg-surface-elevated border border-surface-border rounded-lg p-0.5">
+          <button 
+            onClick={() => setView("list")} 
+            className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+              view === "list" 
+                ? "bg-surface text-text-primary border border-surface-border shadow-sm" 
+                : "text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            List
+          </button>
+          <button 
+            onClick={() => setView("grid")} 
+            className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+              view === "grid" 
+                ? "bg-surface text-text-primary border border-surface-border shadow-sm" 
+                : "text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            Grid
+          </button>
         </div>
       </div>
 
       {view === "list" ? (
-        <table className="data-table w-full">
+        <table className="data-table w-full text-xs">
           <thead>
-            <tr>
+            <tr className="text-text-secondary font-bold border-b border-surface-border">
               <th>#</th>
-              <th>Player</th>
-              <th>Role</th>
+              <th>Player Name</th>
+              <th>Playing Role</th>
               <th className="text-right">AI Score</th>
             </tr>
           </thead>
           <tbody>
             {xi.recommended_xi.map((p: any) => (
-              <tr key={p.player_id} className="group">
-                <td className="font-mono text-gray-500 text-xs">{p.batting_position}</td>
-                <td>
-                  <span className="text-gray-200 font-medium">{p.full_name}</span>
-                  {p.is_overseas && <Badge label="OS" variant="purple" />}
+              <tr key={p.player_id} className="group border-t border-surface-border/50 hover:bg-surface-elevated/45 transition-colors">
+                <td className="font-mono text-text-tertiary text-xs py-2">{p.batting_position}</td>
+                <td className="py-2">
+                  <span className="text-text-primary font-bold">{p.full_name}</span>
+                  {p.is_overseas && <span className="ml-1.5"><Badge label="OS" variant="purple" /></span>}
                 </td>
-                <td><RoleBadge role={p.playing_role} /></td>
-                <td className="text-right font-mono text-xs text-signal-green">{p.ai_score.toFixed(0)}</td>
+                <td className="py-2"><RoleBadge role={p.playing_role} /></td>
+                <td className="text-right font-mono text-xs text-brand font-bold py-2">{p.ai_score.toFixed(0)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2 mt-2">
           {xi.recommended_xi.map((p: any) => (
-            <div key={p.player_id} className="p-2 rounded-lg bg-surface-elevated border border-surface-border text-center">
-              <p className="text-xs text-gray-500 mb-1">#{p.batting_position}</p>
-              <p className="text-xs font-medium text-gray-200 leading-tight">{p.full_name.split(" ").pop()}</p>
-              <div className="mt-1"><RoleBadge role={p.playing_role} /></div>
-              {p.is_overseas && <div className="mt-1"><Badge label="OS" variant="purple" /></div>}
+            <div key={p.player_id} className="p-2.5 rounded-xl bg-surface-elevated border border-surface-border text-center hover:border-brand/40 transition-colors shadow-sm">
+              <p className="text-[10px] text-text-tertiary mb-1 font-semibold font-mono">#{p.batting_position}</p>
+              <p className="text-xs font-extrabold text-text-primary leading-tight truncate">{p.full_name.split(" ").pop()}</p>
+              <div className="mt-1.5"><RoleBadge role={p.playing_role} /></div>
+              {p.is_overseas && <div className="mt-1.5"><Badge label="Overseas" variant="purple" /></div>}
             </div>
           ))}
         </div>
@@ -182,11 +205,11 @@ function PlayingXICard({ xi }: { xi: any }) {
 function KeyFactorsCard({ factors }: { factors: string[] }) {
   return (
     <Card>
-      <CardHeader title="Key Factors" />
-      <ul className="space-y-2">
+      <CardHeader title="Key Match Factors" />
+      <ul className="space-y-2 mt-2">
         {factors.map((f, i) => (
-          <li key={i} className="flex items-start gap-2 text-sm text-gray-400">
-            <span className="text-signal-green mt-0.5">→</span>
+          <li key={i} className="flex items-start gap-2.5 text-xs text-text-secondary leading-relaxed font-medium">
+            <span className="text-brand font-black mt-0.5">→</span>
             <span>{f}</span>
           </li>
         ))}
@@ -199,20 +222,20 @@ function KeyFactorsCard({ factors }: { factors: string[] }) {
 
 function ImpactPlayerCard({ player }: { player: any }) {
   return (
-    <Card className="border-l-2 border-l-signal-amber">
+    <Card className="border-l-4 border-l-brand relative overflow-hidden bg-brand-muted/5">
       <CardHeader
-        title="Impact Player"
-        subtitle="Recommended substitute"
-        right={<Star size={14} className="text-signal-amber" />}
+        title="Impact Player Simulation"
+        subtitle="Recommended substitute tactical asset"
+        right={<Star size={14} className="text-brand animate-spin-slow" />}
       />
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mt-2">
         <div>
-          <p className="text-base font-bold text-gray-100">{player.full_name}</p>
-          <div className="mt-1"><RoleBadge role={player.playing_role} /></div>
+          <p className="text-sm font-extrabold text-text-primary leading-none">{player.full_name}</p>
+          <div className="mt-1.5"><RoleBadge role={player.playing_role} /></div>
         </div>
         <div className="text-right">
-          <p className="text-xs text-gray-500">AI Score</p>
-          <p className="text-2xl font-bold font-mono text-signal-amber">{player.ai_score?.toFixed(0)}</p>
+          <p className="text-[10px] text-text-secondary uppercase tracking-wider font-bold">AI Score</p>
+          <p className="text-xl font-black font-mono text-brand">{player.ai_score?.toFixed(0)}</p>
         </div>
       </div>
     </Card>
@@ -224,12 +247,12 @@ function ImpactPlayerCard({ player }: { player: any }) {
 function XIStatsCard({ xi }: { xi: any }) {
   return (
     <Card>
-      <CardHeader title="XI Composition" />
-      <div className="grid grid-cols-2 gap-3">
-        <Stat label="Total AI Score" value={xi.total_ai_score.toFixed(0)} />
-        <Stat label="Bowling Options" value={xi.bowling_options} color={xi.bowling_options >= 5 ? "text-signal-green" : "text-signal-red"} />
-        <Stat label="Overseas" value={`${xi.overseas_count}/4`} />
-        <Stat label="Players" value={xi.recommended_xi.length} />
+      <CardHeader title="XI Selection Composition" />
+      <div className="grid grid-cols-2 gap-3 mt-2">
+        <Stat label="Cumulative AI Score" value={xi.total_ai_score.toFixed(0)} />
+        <Stat label="Bowling Options" value={xi.bowling_options} color={xi.bowling_options >= 5 ? "text-brand" : "text-red-500"} />
+        <Stat label="Overseas Limits" value={`${xi.overseas_count}/4`} />
+        <Stat label="Squad Selected" value={xi.recommended_xi.length} />
       </div>
     </Card>
   );

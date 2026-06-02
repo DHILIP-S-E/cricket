@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "../../../lib/query";
 import { userApi } from "../index";
 import type { User } from "../../../types/user/user_types";
 

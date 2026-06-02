@@ -242,6 +242,29 @@ export interface LiveRecommendations {
   alert: string | null;
 }
 
+export interface WhatIfScenario {
+  target: number;
+  current_score: number;
+  wickets_fallen: number;
+  overs_completed: number;
+  balls_this_over: number;
+  total_overs: number;
+}
+
+export interface WhatIfResult {
+  win_probability: number;
+  chasing_team_win_prob: number;
+  defending_team_win_prob: number;
+  runs_required: number;
+  balls_remaining: number;
+  wickets_remaining: number;
+  required_run_rate: number;
+  current_run_rate: number;
+  batting_risk_level: number;
+  batting_strategy: string;
+  alert: string | null;
+}
+
 // ─── Pre-Match ────────────────────────────────────────────────────────────────
 
 export interface WinProbability {

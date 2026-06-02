@@ -14,14 +14,55 @@ from crud.live import (
 )
 from services.live_service import (
     compute_live_win_probability, get_bowler_recommendation, get_live_recommendations,
+    simulate_what_if,
+)
+from services.simulation_service import (
+    start_simulation, step_ball, reset_simulation,
 )
 from schemas.live import (
     LiveMatchStateOut, LiveRecommendationsOut, BowlerRecommendationOut,
-    WinProbabilityHistoryPoint, BallEventIn,
+    WinProbabilityHistoryPoint, BallEventIn, WhatIfScenarioIn, WhatIfResultOut,
 )
 from schemas.response import APIResponse
 
 router = APIRouter(prefix="/live", tags=["Live Match Engine"])
+
+
+@router.post("/simulate", response_model=APIResponse[WhatIfResultOut])
+def simulate(scenario: WhatIfScenarioIn):
+    """
+    Stateless 'what-if' win-probability simulator.
+
+    Feed a hypothetical chase scenario (target, score, wickets, overs) and get an
+    instant prediction from the live win-probability ML model — no live match
+    needed. This is the on-demand 'predict anything' endpoint.
+    """
+    result = simulate_what_if(scenario.model_dump())
+    return APIResponse(data=result)
+
+
+@router.post("/{match_id}/sim/start", response_model=APIResponse[dict])
+def sim_start(match_id: UUID, db: Session = Depends(get_db)):
+    """Start an interactive ball-by-ball chase simulation for this match."""
+    result = start_simulation(db, match_id)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return APIResponse(data=result, message="Simulation started")
+
+
+@router.post("/{match_id}/sim/step", response_model=APIResponse[dict])
+def sim_step(match_id: UUID, db: Session = Depends(get_db)):
+    """Simulate the next ball. Updates state + ML win probability."""
+    result = step_ball(db, match_id)
+    if "error" in result:
+        raise HTTPException(status_code=409, detail=result["error"])
+    return APIResponse(data=result)
+
+
+@router.post("/{match_id}/sim/reset", response_model=APIResponse[dict])
+def sim_reset(match_id: UUID, db: Session = Depends(get_db)):
+    """Clear the simulation so it can be started fresh."""
+    return APIResponse(data=reset_simulation(db, match_id), message="Simulation reset")
 
 
 @router.get("/{match_id}/state", response_model=APIResponse[LiveMatchStateOut])

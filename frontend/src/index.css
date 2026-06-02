@@ -2,6 +2,192 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Default Light Mode Base */
+  --color-surface-bg: #f4f6fa;
+  --color-surface-card: rgba(255, 255, 255, 0.7);
+  --color-surface-elevated: #ffffff;
+  --color-surface-border: rgba(0, 0, 0, 0.08);
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #94a3b8;
+
+  --color-brand: #d2a100;
+  --color-brand-hover: #b58a00;
+  --color-brand-muted: rgba(210, 161, 0, 0.1);
+  --color-glow: rgba(0, 59, 125, 0.15);
+  
+  --color-stadium-overlay: rgba(244, 246, 250, 0.85);
+  --cyber-grid-color: rgba(0, 59, 125, 0.04);
+}
+
+.dark {
+  /* Night Match (Dark Mode) Base */
+  --color-surface-bg: #080a10;
+  --color-surface-card: rgba(22, 27, 34, 0.55);
+  --color-surface-elevated: #161b22;
+  --color-surface-border: rgba(255, 255, 255, 0.08);
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-tertiary: #475569;
+
+  --color-brand: #e2b400;
+  --color-brand-hover: #f5b014;
+  --color-brand-muted: rgba(226, 180, 0, 0.15);
+  --color-glow: rgba(226, 180, 0, 0.25);
+  
+  --color-stadium-overlay: rgba(8, 10, 16, 0.88);
+  --cyber-grid-color: rgba(35, 134, 54, 0.1);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   FRANCHISE THEMES
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* 1. Chennai Super Kings (CSK) */
+.theme-csk {
+  --color-brand: #b88e00;
+  --color-brand-hover: #a37e00;
+  --color-brand-muted: rgba(184, 142, 0, 0.12);
+  --color-glow: rgba(0, 98, 184, 0.2);
+}
+.dark.theme-csk, .theme-csk.dark {
+  --color-brand: #f9cd05;
+  --color-brand-hover: #e2b400;
+  --color-brand-muted: rgba(249, 205, 5, 0.15);
+  --color-glow: rgba(249, 205, 5, 0.35);
+}
+
+/* 2. Mumbai Indians (MI) */
+.theme-mi {
+  --color-brand: #004ba0;
+  --color-brand-hover: #003b7d;
+  --color-brand-muted: rgba(0, 75, 160, 0.1);
+  --color-glow: rgba(181, 138, 0, 0.2);
+}
+.dark.theme-mi, .theme-mi.dark {
+  --color-brand: #0066d4;
+  --color-brand-hover: #1e80ff;
+  --color-brand-muted: rgba(0, 102, 212, 0.15);
+  --color-glow: rgba(209, 171, 62, 0.35);
+}
+
+/* 3. Royal Challengers Bengaluru (RCB) */
+.theme-rcb {
+  --color-brand: #b80000;
+  --color-brand-hover: #9c0000;
+  --color-brand-muted: rgba(184, 0, 0, 0.1);
+  --color-glow: rgba(140, 112, 0, 0.2);
+}
+.dark.theme-rcb, .theme-rcb.dark {
+  --color-brand: #ff3333;
+  --color-brand-hover: #ff5c5c;
+  --color-brand-muted: rgba(255, 51, 51, 0.15);
+  --color-glow: rgba(209, 171, 62, 0.35);
+}
+
+/* 4. Kolkata Knight Riders (KKR) */
+.theme-kkr {
+  --color-brand: #3b1f8c;
+  --color-brand-hover: #2e186e;
+  --color-brand-muted: rgba(59, 31, 140, 0.1);
+  --color-glow: rgba(184, 149, 0, 0.2);
+}
+.dark.theme-kkr, .theme-kkr.dark {
+  --color-brand: #7d50ff;
+  --color-brand-hover: #9a75ff;
+  --color-brand-muted: rgba(125, 80, 255, 0.15);
+  --color-glow: rgba(241, 196, 15, 0.35);
+}
+
+/* 5. Rajasthan Royals (RR) */
+.theme-rr {
+  --color-brand: #d6006b;
+  --color-brand-hover: #b8005c;
+  --color-brand-muted: rgba(214, 0, 107, 0.1);
+  --color-glow: rgba(0, 75, 160, 0.2);
+}
+.dark.theme-rr, .theme-rr.dark {
+  --color-brand: #ff3399;
+  --color-brand-hover: #ff66b2;
+  --color-brand-muted: rgba(255, 51, 153, 0.15);
+  --color-glow: rgba(0, 129, 233, 0.35);
+}
+
+/* 6. Sunrisers Hyderabad (SRH) */
+.theme-srh {
+  --color-brand: #cc5200;
+  --color-brand-hover: #b34800;
+  --color-brand-muted: rgba(204, 82, 0, 0.1);
+  --color-glow: rgba(30, 30, 30, 0.25);
+}
+.dark.theme-srh, .theme-srh.dark {
+  --color-brand: #ff8225;
+  --color-brand-hover: #ff9b50;
+  --color-brand-muted: rgba(255, 130, 37, 0.15);
+  --color-glow: rgba(255, 130, 37, 0.35);
+}
+
+/* 7. Gujarat Titans (GT) */
+.theme-gt {
+  --color-brand: #111529;
+  --color-brand-hover: #080a14;
+  --color-brand-muted: rgba(17, 21, 41, 0.12);
+  --color-glow: rgba(181, 138, 0, 0.2);
+}
+.dark.theme-gt, .theme-gt.dark {
+  --color-brand: #384585;
+  --color-brand-hover: #4e5fae;
+  --color-brand-muted: rgba(56, 69, 133, 0.15);
+  --color-glow: rgba(226, 180, 0, 0.35);
+}
+
+/* 8. Lucknow Super Giants (LSG) */
+.theme-lsg {
+  --color-brand: #2a7ab8;
+  --color-brand-hover: #226294;
+  --color-brand-muted: rgba(42, 122, 184, 0.1);
+  --color-glow: rgba(40, 153, 69, 0.2);
+}
+.dark.theme-lsg, .theme-lsg.dark {
+  --color-brand: #4fa3e3;
+  --color-brand-hover: #7abceb;
+  --color-brand-muted: rgba(79, 163, 227, 0.15);
+  --color-glow: rgba(52, 199, 89, 0.35);
+}
+
+/* 9. Delhi Capitals (DC) */
+.theme-dc {
+  --color-brand: #004e8a;
+  --color-brand-hover: #003e6e;
+  --color-brand-muted: rgba(0, 78, 138, 0.1);
+  --color-glow: rgba(201, 42, 42, 0.2);
+}
+.dark.theme-dc, .theme-dc.dark {
+  --color-brand: #007fff;
+  --color-brand-hover: #3399ff;
+  --color-brand-muted: rgba(0, 127, 255, 0.15);
+  --color-glow: rgba(255, 77, 77, 0.35);
+}
+
+/* 10. Punjab Kings (PBKS) */
+.theme-pbks {
+  --color-brand: #b50e14;
+  --color-brand-hover: #910b0f;
+  --color-brand-muted: rgba(181, 14, 20, 0.1);
+  --color-glow: rgba(122, 122, 122, 0.2);
+}
+.dark.theme-pbks, .theme-pbks.dark {
+  --color-brand: #ff333d;
+  --color-brand-hover: #ff5c64;
+  --color-brand-muted: rgba(255, 51, 61, 0.15);
+  --color-glow: rgba(204, 204, 204, 0.35);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   BASE LAYOUT OVERRIDES
+   ─────────────────────────────────────────────────────────────────────────── */
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -14,26 +200,28 @@
   }
 
   body {
-    background-color: #080a10;
-    color: #f1f5f9;
+    background-color: var(--color-surface-bg);
+    color: var(--color-text-primary);
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
     font-size: 14px;
     overflow-x: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Outfit', sans-serif;
     letter-spacing: -0.02em;
+    color: var(--color-text-primary);
   }
 
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
-  ::-webkit-scrollbar-track { background: #080a10; }
-  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #334155; }
+  ::-webkit-scrollbar-track { background: var(--color-surface-bg); }
+  ::-webkit-scrollbar-thumb { background: var(--color-surface-border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-brand); }
 }
 
 /* 3D and Immersive Web Utilities */
@@ -58,17 +246,17 @@
 }
 
 .glass-card {
-  background: rgba(22, 27, 34, 0.45);
+  background: var(--color-surface-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  border: 1px solid var(--color-surface-border);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .glass-card:hover {
-  border-color: rgba(59, 130, 246, 0.3);
-  box-shadow: 0 8px 32px 0 rgba(59, 130, 246, 0.1);
+  border-color: var(--color-brand);
+  box-shadow: 0 8px 32px 0 var(--color-glow);
 }
 
 .neon-glow-blue {
@@ -123,8 +311,8 @@
 /* Cyber Grid Effect */
 .cyber-grid {
   background-image: 
-    linear-gradient(rgba(35, 134, 54, 0.1) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(35, 134, 54, 0.1) 1px, transparent 1px);
+    linear-gradient(var(--cyber-grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cyber-grid-color) 1px, transparent 1px);
   background-size: 20px 20px;
   background-position: center center;
 }
@@ -139,7 +327,7 @@
   display: block;
   position: absolute;
   top: 0; left: 0; bottom: 0; right: 0;
-  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
   z-index: 2;
   background-size: 100% 4px, 6px 100%;
   pointer-events: none;
@@ -155,7 +343,7 @@
   position: absolute;
   width: 100%;
   height: 100px;
-  background: linear-gradient(to bottom, transparent, rgba(34, 197, 94, 0.15), transparent);
+  background: linear-gradient(to bottom, transparent, var(--color-brand-muted), transparent);
   animation: scanline-scroll 4s linear infinite;
   pointer-events: none;
   z-index: 3;
@@ -218,7 +406,10 @@
 
 @layer components {
   .card {
-    @apply bg-surface-card border border-surface-border rounded-xl p-4;
+    background-color: var(--color-surface-card);
+    border: 1px solid var(--color-surface-border);
+    border-radius: 0.75rem;
+    padding: 1rem;
   }
 
   .stat-label {
@@ -226,7 +417,8 @@
   }
 
   .stat-value {
-    @apply text-2xl font-bold text-gray-100 font-mono;
+    @apply text-2xl font-bold font-mono;
+    color: var(--color-text-primary);
   }
 
   .badge-green  { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-900/50 text-green-400 border border-green-800; }
@@ -241,10 +433,21 @@
            transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface;
   }
   .btn-primary {
-    @apply btn bg-brand text-white hover:bg-brand-hover focus:ring-brand;
+    background-color: var(--color-brand);
+    color: #ffffff !important;
   }
+  .btn-primary:hover {
+    background-color: var(--color-brand-hover);
+    box-shadow: 0 0 12px var(--color-glow);
+  }
+  
   .btn-ghost {
-    @apply btn text-gray-400 hover:text-gray-100 hover:bg-surface-elevated;
+    @apply btn;
+    color: var(--color-text-secondary);
+  }
+  .btn-ghost:hover {
+    color: var(--color-text-primary);
+    background-color: var(--color-surface-elevated);
   }
   .btn-danger {
     @apply btn bg-red-900/50 text-red-400 border border-red-800 hover:bg-red-900;
@@ -252,15 +455,21 @@
 
   .nav-item {
     @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
-           text-gray-400 hover:text-gray-100 hover:bg-surface-elevated
            transition-colors duration-150 cursor-pointer;
+    color: var(--color-text-secondary);
+  }
+  .nav-item:hover {
+    color: var(--color-text-primary);
+    background-color: var(--color-surface-elevated);
   }
   .nav-item.active {
-    @apply bg-brand-muted text-signal-green;
+    background-color: var(--color-brand-muted) !important;
+    color: var(--color-brand) !important;
   }
 
   .live-dot {
-    @apply w-2 h-2 rounded-full bg-signal-green animate-pulse-slow;
+    @apply w-2 h-2 rounded-full animate-pulse-slow;
+    background-color: var(--color-brand);
   }
 
   .prob-bar {
@@ -271,9 +480,11 @@
     @apply text-xs text-gray-500 uppercase tracking-wider font-medium py-2 px-3 text-left;
   }
   .data-table td {
-    @apply py-2 px-3 text-sm border-t border-surface-border;
+    @apply py-2 px-3 text-sm;
+    border-top: 1px solid var(--color-surface-border);
+    color: var(--color-text-primary);
   }
   .data-table tr:hover td {
-    @apply bg-surface-elevated;
+    background-color: var(--color-surface-elevated);
   }
 }

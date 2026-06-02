@@ -63,6 +63,92 @@ def compute_live_win_probability(db: Session, match_id: UUID) -> float:
     return predict_live_win_prob(state)
 
 
+def simulate_what_if(scenario: dict) -> dict:
+    """
+    Stateless 'what-if' simulation — no DB, no live match required.
+
+    Given a hypothetical 2nd-innings chase scenario, derive the model features
+    and run the real live win-probability model, then return a strategy bundle.
+
+    scenario keys:
+        target (int)          — runs the chasing team must reach
+        current_score (int)   — chasing team's current runs
+        wickets_fallen (int)  — 0–10
+        overs_completed (int) — completed overs
+        balls_this_over (int) — 0–5 legal balls bowled in the current over
+        total_overs (int)     — innings length (default 20)
+    """
+    target = max(1, int(scenario.get("target", 180)))
+    current_score = max(0, int(scenario.get("current_score", 0)))
+    wickets_fallen = min(10, max(0, int(scenario.get("wickets_fallen", 0))))
+    overs_completed = max(0, int(scenario.get("overs_completed", 0)))
+    balls_this_over = min(5, max(0, int(scenario.get("balls_this_over", 0))))
+    total_overs = max(1, int(scenario.get("total_overs", 20)))
+
+    over_number = overs_completed  # current over index, used for phase flags
+    balls_bowled = overs_completed * 6 + balls_this_over
+    total_balls = total_overs * 6
+    balls_remaining = max(0, total_balls - balls_bowled)
+    runs_required = max(0, target - current_score)
+    wickets_remaining = 10 - wickets_fallen
+
+    # Terminal states — no model call needed.
+    if wickets_remaining <= 0:
+        win_prob = 0.99 if runs_required <= 0 else 0.01
+    elif runs_required <= 0:
+        win_prob = 0.99
+    elif balls_remaining <= 0:
+        win_prob = 0.01
+    else:
+        current_rr = (current_score / (balls_bowled / 6)) if balls_bowled > 0 else 0.0
+        required_rr = runs_required / (balls_remaining / 6)
+        state = {
+            "balls_remaining": balls_remaining,
+            "runs_required": runs_required,
+            "wickets_remaining": wickets_remaining,
+            "required_run_rate": round(required_rr, 2),
+            "current_run_rate": round(current_rr, 2),
+            "run_rate_ratio": round(current_rr / required_rr, 4) if required_rr > 0 else 1.0,
+            "target": target,
+            "current_score": current_score,
+            "is_powerplay": int(over_number < 6),
+            "is_middle_overs": int(6 <= over_number < 15),
+            "is_death_overs": int(over_number >= 15),
+            "over_number": over_number,
+            "wickets_fallen": wickets_fallen,
+        }
+        win_prob = predict_live_win_prob(state)
+
+    # Strategy derivation (mirrors get_live_recommendations).
+    required_rr = (runs_required / (balls_remaining / 6)) if balls_remaining > 0 else 0.0
+    current_rr = (current_score / (balls_bowled / 6)) if balls_bowled > 0 else 0.0
+    batting_risk = min(10, max(1, int(required_rr - 2))) if balls_remaining > 0 else 5
+    batting_strategy = (
+        "Bat deep — preserve wickets" if batting_risk <= 3
+        else "Rotate strike, take calculated risks" if batting_risk <= 6
+        else "Aggressive — boundaries every over" if batting_risk <= 8
+        else "All-out attack — every ball is a scoring opportunity"
+    )
+
+    alert = None
+    if wickets_fallen >= 7 and runs_required > 0 and balls_remaining > 0:
+        alert = f"Tail exposed — {runs_required} needed off {balls_remaining}, only {wickets_remaining} wickets left"
+
+    return {
+        "win_probability": round(float(win_prob), 4),
+        "chasing_team_win_prob": round(float(win_prob), 4),
+        "defending_team_win_prob": round(1 - float(win_prob), 4),
+        "runs_required": runs_required,
+        "balls_remaining": balls_remaining,
+        "wickets_remaining": wickets_remaining,
+        "required_run_rate": round(required_rr, 2),
+        "current_run_rate": round(current_rr, 2),
+        "batting_risk_level": batting_risk,
+        "batting_strategy": batting_strategy,
+        "alert": alert,
+    }
+
+
 def get_bowler_recommendation(db: Session, match_id: UUID) -> dict:
     """Recommend the best bowler for the next over."""
     live = get_live_state(db, match_id)

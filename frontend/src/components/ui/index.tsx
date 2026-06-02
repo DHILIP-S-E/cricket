@@ -25,7 +25,7 @@ import { Badge } from "./badge";
 // Card wrapper with cricket styling
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("rounded-xl border border-[#30363d] bg-[#161b22] p-4", className)}>
+    <div className={cn("card shadow-sm hover:shadow-md transition-all duration-200", className)}>
       {children}
     </div>
   );
@@ -38,8 +38,8 @@ export function CardHeader({ title, subtitle, right }: {
   return (
     <div className="flex items-start justify-between mb-3">
       <div>
-        <h3 className="text-sm font-semibold text-gray-100 leading-none">{title}</h3>
-        {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+        <h3 className="text-sm font-semibold text-text-primary leading-none">{title}</h3>
+        {subtitle && <p className="text-xs text-text-secondary mt-1">{subtitle}</p>}
       </div>
       {right && <div className="flex-shrink-0 ml-3">{right}</div>}
     </div>
@@ -47,14 +47,14 @@ export function CardHeader({ title, subtitle, right }: {
 }
 
 // Numeric statistic
-export function Stat({ label, value, sub, color = "text-gray-100" }: {
+export function Stat({ label, value, sub, color = "text-text-primary" }: {
   label: string; value: string | number; sub?: string; color?: string;
 }) {
   return (
     <div>
-      <p className="text-[10px] text-gray-500 uppercase tracking-wider font-medium leading-none mb-1">{label}</p>
+      <p className="text-[10px] text-text-secondary uppercase tracking-wider font-medium leading-none mb-1">{label}</p>
       <p className={cn("text-2xl font-bold font-mono leading-none", color)}>{value}</p>
-      {sub && <p className="text-xs text-gray-600 mt-0.5">{sub}</p>}
+      {sub && <p className="text-xs text-text-tertiary mt-0.5">{sub}</p>}
     </div>
   );
 }
@@ -63,7 +63,7 @@ export function Stat({ label, value, sub, color = "text-gray-100" }: {
 export function Spinner({ size = 20 }: { size?: number }) {
   return (
     <div
-      className="border-2 border-[#30363d] border-t-[#238636] rounded-full animate-spin"
+      className="border-2 border-surface-border border-t-brand rounded-full animate-spin"
       style={{ width: size, height: size }}
     />
   );
@@ -72,7 +72,7 @@ export function Spinner({ size = 20 }: { size?: number }) {
 // Empty state placeholder
 export function EmptyState({ message, icon }: { message: string; icon?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center h-36 text-gray-700">
+    <div className="flex flex-col items-center justify-center h-36 text-text-secondary">
       {icon && <div className="mb-2 opacity-30">{icon}</div>}
       <p className="text-sm">{message}</p>
     </div>
@@ -84,10 +84,10 @@ export function PageHeader({ title, subtitle, right }: {
   title: string; subtitle?: string; right?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363d] bg-[#161b22] flex-shrink-0">
+    <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border bg-surface-card flex-shrink-0">
       <div>
-        <h1 className="text-base font-bold text-gray-100">{title}</h1>
-        {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
+        <h1 className="text-base font-bold text-text-primary">{title}</h1>
+        {subtitle && <p className="text-xs text-text-secondary mt-0.5">{subtitle}</p>}
       </div>
       {right && <div className="flex items-center gap-2">{right}</div>}
     </div>
@@ -101,11 +101,11 @@ export function WinProbBar({ team1, prob1, team2 }: { team1: string; prob1: numb
   return (
     <div>
       <div className="flex justify-between text-xs mb-1.5">
-        <span className="text-gray-400">{team1} <span className="text-[#22c55e] font-mono font-bold">{p1}%</span></span>
-        <span className="text-gray-400"><span className="text-blue-400 font-mono font-bold">{p2}%</span> {team2}</span>
+        <span className="text-text-secondary">{team1} <span className="text-brand font-mono font-bold">{p1}%</span></span>
+        <span className="text-text-secondary"><span className="text-blue-500 dark:text-blue-400 font-mono font-bold">{p2}%</span> {team2}</span>
       </div>
-      <div className="h-2.5 rounded-full overflow-hidden flex bg-blue-900/40">
-        <div className="h-full bg-[#22c55e] rounded-l-full transition-all duration-700" style={{ width: `${p1}%` }} />
+      <div className="h-2.5 rounded-full overflow-hidden flex bg-surface-border">
+        <div className="h-full bg-brand rounded-l-full transition-all duration-700" style={{ width: `${p1}%` }} />
       </div>
     </div>
   );

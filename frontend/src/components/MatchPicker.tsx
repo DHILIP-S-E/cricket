@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "../lib/query";
 import { Calendar, ChevronRight, Search } from "lucide-react";
 import { tournamentApi } from "../api/cricket";
 import { Card, CardHeader, PageHeader, Spinner, EmptyState, Badge } from "./ui";

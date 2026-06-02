@@ -8,6 +8,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { AuctionRoom } from "./pages/AuctionRoom";
 import { PreMatch } from "./pages/PreMatch";
 import { LiveMatch } from "./pages/LiveMatch";
+import { WhatIfSimulator } from "./pages/WhatIfSimulator";
 import { Players } from "./pages/Players";
 import { Tournaments } from "./pages/Tournaments";
 
@@ -30,6 +31,7 @@ export default function App() {
             <Route path="auction" element={<AuctionRoom />} />
             <Route path="prematch/:matchId?" element={<PreMatch />} />
             <Route path="live/:matchId?" element={<LiveMatch />} />
+            <Route path="simulator" element={<WhatIfSimulator />} />
             <Route path="players" element={<Players />} />
             <Route path="tournaments" element={<Tournaments />} />
           </Route>
