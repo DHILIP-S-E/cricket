@@ -15,6 +15,7 @@ import {
   RiskMeter, WinProbBar,
 } from "../components/ui";
 import { MatchPicker } from "../components/MatchPicker";
+import { CoachAdvisorCard } from "../components/CoachAdvisorCard";
 import { useTheme } from "../context/ThemeContext";
 
 export function LiveMatch() {
@@ -48,6 +49,13 @@ export function LiveMatch() {
     queryKey: ["live", mid, "rec"],
     queryFn: () => liveApi.recommendations(mid),
     refetchInterval: 8000,
+    enabled: !!mid,
+  });
+
+  const { data: advisorRes } = useQuery({
+    queryKey: ["live", mid, "advisor"],
+    queryFn: () => liveApi.advisor(mid),
+    refetchInterval: 12000,
     enabled: !!mid,
   });
 
@@ -244,6 +252,7 @@ export function LiveMatch() {
 
           {/* CENTRE — Recommendations */}
           <div className="col-span-4 space-y-4">
+            <CoachAdvisorCard title="AI Tactical Advisor" advice={advisorRes?.data} />
             {rec?.bowler_recommendation && (
               <BowlerRecCard rec={rec.bowler_recommendation} />
             )}

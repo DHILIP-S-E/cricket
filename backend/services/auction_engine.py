@@ -32,6 +32,7 @@ from crud.auction import (
 )
 from models import AuctionLot, AuctionSession, Player, TeamAuctionState
 from services.auction_service import get_bid_recommendation
+from services import llm_agent
 
 logger = logging.getLogger(__name__)
 
@@ -319,6 +320,73 @@ def _resolve_unsold(db: Session, session_id: UUID, lot: AuctionLot) -> dict:
     st["events"] = ([{"actor": "Auctioneer", "action": "UNSOLD", "amount": None,
                       "player": player.full_name if player else ""}] + st["events"])[:RECENT_EVENTS]
     return _snapshot(db, session_id)
+
+
+# ── AI Advisor agent (LLM reasoning, grounded in the ML numbers) ──────────
+
+_ADVISOR_SYSTEM = (
+    "You are the AI auction strategist for an IPL-style T20 franchise. "
+    "Give sharp, concise tactical advice grounded ONLY in the numbers given — "
+    "do not invent stats. Speak directly to the team owner in 2-3 sentences. "
+    "Then on a final line output exactly one of: 'CALL: BID', 'CALL: HOLD', or 'CALL: PASS'."
+)
+
+
+def advisor(db: Session, session_id: UUID, franchise_id: UUID) -> dict:
+    """The user's AI coach: reasons about the current lot in natural language."""
+    session = get_session(db, session_id)
+    lot = get_current_lot(db, session_id)
+    if not session or not lot:
+        return {"available": False, "advice": "No lot is currently under the hammer.",
+                "call": "HOLD", "provider": llm_agent.provider_name()}
+
+    st = _ENGINE.get(str(session_id), {})
+    price = (float(session.current_bid_amount_cr) if session.current_bid_amount_cr
+             else float(lot.base_price_cr))
+    highest = str(session.current_highest_bidder_id) if session.current_highest_bidder_id else None
+    you_high = highest == str(franchise_id)
+
+    try:
+        rec = get_bid_recommendation(db, session_id, franchise_id, lot.player_id, session.season_id)
+    except Exception:
+        rec = {"should_bid": False}
+    ts = get_team_state(db, session_id, franchise_id)
+
+    facts = (
+        f"Player: {lot.player.full_name} ({lot.player.playing_role.value})\n"
+        f"Base price: Rs {float(lot.base_price_cr):.2f} Cr\n"
+        f"Current bid: Rs {price:.2f} Cr ({'YOU are highest' if you_high else 'a rival is highest' if highest else 'no bids yet'})\n"
+        f"AI fair value: Rs {rec.get('fair_value_cr', 0):.2f} Cr\n"
+        f"AI recommended max bid: Rs {rec.get('recommended_max_bid_cr', 0):.2f} Cr\n"
+        f"Your remaining budget: Rs {float(ts.remaining_budget_cr):.2f} Cr\n" if ts else ""
+    )
+    if ts:
+        facts += (
+            f"Your squad: {ts.squad_size}/{ts.squad_size_max} "
+            f"(WK {ts.wk_count}, BAT {ts.batter_count}, BWL {ts.bowler_count}, ALR {ts.all_rounder_count})\n"
+            f"AI verdict: {'worth bidding' if rec.get('should_bid') else 'not worth it'}"
+        )
+
+    text = llm_agent.complete(_ADVISOR_SYSTEM, facts, max_tokens=220)
+
+    if text:
+        call = "HOLD"
+        for c in ("BID", "PASS", "HOLD"):
+            if f"CALL: {c}" in text.upper():
+                call = c
+                break
+        advice = text.split("CALL:")[0].strip()
+        return {"available": True, "advice": advice, "call": call,
+                "provider": llm_agent.provider_name()}
+
+    # Fallback: no LLM key configured → use the ML recommendation directly.
+    should = rec.get("should_bid")
+    fallback = rec.get("reasoning") or (
+        "Within fair value — worth a bid." if should else "Above value or squad-constrained — hold off."
+    )
+    return {"available": False, "advice": fallback,
+            "call": "BID" if should else "PASS",
+            "provider": "none"}
 
 
 # ── helpers ─────────────────────────────────────────────────────────────

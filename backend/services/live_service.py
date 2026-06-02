@@ -13,8 +13,49 @@ from crud.live import get_live_state, get_live_bowlers, get_win_probability_hist
 from crud.match import get_playing_xi
 from crud.player import get_player
 from ml.serve import predict_live_win_prob, get_matchup
+from services import llm_agent
 
 logger = logging.getLogger(__name__)
+
+
+_TACTICAL_SYSTEM = (
+    "You are the AI tactical advisor watching a live T20 run chase from the dugout. "
+    "Using ONLY the live state given, tell the captain what to do RIGHT NOW in 2-3 punchy "
+    "sentences (batting intent, bowling/field plan). Do not invent stats."
+)
+
+
+def get_live_advisor(db: Session, match_id: UUID) -> dict:
+    """Tactical Advisor agent — live natural-language coaching grounded in the ML state."""
+    state = get_live_state(db, match_id)
+    if not state:
+        return {"available": False, "advice": "No live match in progress.", "provider": "none"}
+
+    rec = get_live_recommendations(db, match_id)
+    bowler = rec.get("bowler_recommendation")
+    batting_name = state.batting_team.name if state.batting_team else "Batting team"
+    bowling_name = state.bowling_team.name if state.bowling_team else "Bowling team"
+    facts = (
+        f"{batting_name} batting vs {bowling_name}\n"
+        f"Score: {state.batting_team_score}/{state.batting_team_wickets} "
+        f"after {state.current_over}.{state.current_ball} overs\n"
+        + (f"Need {state.runs_required} off {state.balls_remaining} balls "
+           f"(RRR {float(state.required_run_rate):.1f})\n" if state.runs_required else "")
+        + f"Win probability (batting side): {round(rec['win_probability']*100)}%\n"
+        f"Momentum: {rec['momentum']}\n"
+        + (f"Suggested bowler: {bowler['recommended_bowler_name']}\n" if bowler else "")
+        + (f"Alert: {rec['alert']}\n" if rec.get("alert") else "")
+    )
+    text = llm_agent.complete(_TACTICAL_SYSTEM, facts, max_tokens=220)
+    if text:
+        return {"available": True, "advice": text.strip(), "provider": llm_agent.provider_name()}
+
+    fallback = rec.get("batting_strategy", "Play the situation.")
+    if bowler:
+        fallback += f" Bowling side: bring on {bowler['recommended_bowler_name']}."
+    if rec.get("alert"):
+        fallback += f" {rec['alert']}"
+    return {"available": False, "advice": fallback, "provider": "none"}
 
 
 def compute_live_win_probability(db: Session, match_id: UUID) -> float:

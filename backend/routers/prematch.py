@@ -10,6 +10,7 @@ from services.prematch_service import (
     get_xi_recommendation,
     get_prematch_win_probability,
     get_matchup_analysis,
+    get_prematch_advisor,
 )
 from schemas.prematch import (
     PlayingXIRecommendationOut, WinProbabilityOut, MatchupMatrixOut,
@@ -43,6 +44,12 @@ def win_probability(match_id: UUID, db: Session = Depends(get_db)):
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
     return APIResponse(data=result)
+
+
+@router.get("/{match_id}/advisor", response_model=APIResponse[dict])
+def prematch_advisor(match_id: UUID, db: Session = Depends(get_db)):
+    """AI Coach agent: LLM pre-match briefing (falls back to ML factors if no LLM key)."""
+    return APIResponse(data=get_prematch_advisor(db, match_id))
 
 
 @router.post("/matchups", response_model=APIResponse[MatchupMatrixOut])

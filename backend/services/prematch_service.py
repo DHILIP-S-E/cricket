@@ -13,8 +13,41 @@ from crud.match import get_match, get_recent_h2h_matches
 from crud.tournament import get_squad
 from crud.player import get_player_form, get_player_rating
 from ml.serve import predict_prematch_win_prob, optimize_playing_xi, get_matchup_matrix
+from services import llm_agent
 
 logger = logging.getLogger(__name__)
+
+
+_COACH_SYSTEM = (
+    "You are the AI head coach for a T20 franchise giving a pre-match briefing. "
+    "Using ONLY the analysis provided, give 2-3 crisp sentences of strategic advice: "
+    "toss call, the key threat, and what to prioritise. Do not invent stats."
+)
+
+
+def get_prematch_advisor(db: Session, match_id: UUID) -> dict:
+    """AI Coach agent — natural-language pre-match briefing grounded in the ML win-prob."""
+    wp = get_prematch_win_probability(db, match_id)
+    if "error" in wp:
+        return {"available": False, "advice": wp["error"], "provider": "none"}
+
+    facts = (
+        f"Match: {wp['team1_name']} vs {wp['team2_name']}\n"
+        f"Model win probability: {wp['team1_name']} {round(wp['team1_win_prob']*100)}% "
+        f"vs {wp['team2_name']} {round(wp['team2_win_prob']*100)}%\n"
+        f"Confidence: {wp['confidence']}\n"
+        f"Key factors: {'; '.join(wp['key_factors']) if wp['key_factors'] else 'none flagged'}"
+    )
+    text = llm_agent.complete(_COACH_SYSTEM, facts, max_tokens=220)
+    if text:
+        return {"available": True, "advice": text.strip(), "provider": llm_agent.provider_name()}
+
+    fallback = (
+        f"{wp['team1_name'] if wp['team1_win_prob'] >= wp['team2_win_prob'] else wp['team2_name']} "
+        f"are favoured ({max(wp['team1_win_prob'], wp['team2_win_prob'])*100:.0f}%). "
+        + (" ".join(wp["key_factors"]) if wp["key_factors"] else "Match is finely balanced.")
+    )
+    return {"available": False, "advice": fallback, "provider": "none"}
 
 
 def get_xi_recommendation(

@@ -42,7 +42,50 @@ export const auctionApi = {
   lots: (sessionId: string) => api.get<APIResponse<AuctionLot[]>>(`/auction/sessions/${sessionId}/lots`),
   placeBid: (lotId: string, franchiseId: string, amount: number, isRtm = false) =>
     api.post<APIResponse<unknown>>("/auction/bids", { lot_id: lotId, franchise_id: franchiseId, bid_amount_cr: amount, is_rtm: isRtm }),
+  // Interactive auction engine (live game loop)
+  open: (sessionId: string, franchiseId: string) =>
+    api.post<APIResponse<AuctionEngineState>>(`/auction/sessions/${sessionId}/open?franchise_id=${franchiseId}`, {}),
+  tick: (sessionId: string) =>
+    api.post<APIResponse<AuctionEngineState>>(`/auction/sessions/${sessionId}/tick`, {}),
+  engineBid: (sessionId: string, franchiseId: string, amount: number) =>
+    api.post<APIResponse<AuctionEngineState>>(`/auction/sessions/${sessionId}/user-bid`,
+      { lot_id: "00000000-0000-0000-0000-000000000000", franchise_id: franchiseId, bid_amount_cr: amount, is_rtm: false }),
+  passLot: (sessionId: string) =>
+    api.post<APIResponse<AuctionEngineState>>(`/auction/sessions/${sessionId}/pass`, {}),
+  advisor: (sessionId: string, franchiseId: string) =>
+    api.get<APIResponse<AdvisorResult>>(`/auction/sessions/${sessionId}/advisor?franchise_id=${franchiseId}`),
 };
+
+export interface AdvisorResult {
+  available: boolean;       // true when a live LLM produced the advice
+  advice: string;
+  call: "BID" | "HOLD" | "PASS";
+  provider: string;         // "gemini" | "anthropic" | "openai" | "none"
+}
+
+export interface AuctionEngineEvent {
+  actor: string;
+  action: string;       // "presented" | "bid" | "SOLD" | "UNSOLD"
+  amount: number | null;
+  player: string;
+}
+
+export interface AuctionEngineState {
+  phase: "idle" | "bidding" | "sold" | "unsold" | "finished";
+  lot: { lot_number: number; player_id: string; player_name: string; playing_role: string; base_price_cr: number } | null;
+  current_price_cr: number | null;
+  increment_cr: number;
+  highest_bidder_id: string | null;
+  highest_bidder_name: string | null;
+  user_is_highest: boolean;
+  countdown: number;
+  max_countdown: number;
+  events: AuctionEngineEvent[];
+  last_result: { player_name: string; price_cr: number | null; sold_to_name: string | null; sold: boolean } | null;
+  finished: boolean;
+  total_sold: number;
+  total_unsold: number;
+}
 
 // ─── Live Match ───────────────────────────────────────────────────────────────
 
@@ -52,6 +95,7 @@ export const liveApi = {
     api.get<APIResponse<{ current: number; batting_team_name: string; history: WinProbHistoryPoint[] }>>(`/live/${matchId}/win-probability`),
   recommendations: (matchId: string) => api.get<APIResponse<LiveRecommendations>>(`/live/${matchId}/recommendations`),
   bowlerRec: (matchId: string) => api.get<APIResponse<unknown>>(`/live/${matchId}/bowler-recommendation`),
+  advisor: (matchId: string) => api.get<APIResponse<CoachAdvice>>(`/live/${matchId}/advisor`),
   simulate: (scenario: WhatIfScenario) =>
     api.post<APIResponse<WhatIfResult>>("/live/simulate", scenario),
   // Interactive ball-by-ball simulation
@@ -77,8 +121,15 @@ export interface SimStep {
 
 // ─── Pre-Match ────────────────────────────────────────────────────────────────
 
+export interface CoachAdvice {
+  available: boolean;
+  advice: string;
+  provider: string;
+}
+
 export const prematchApi = {
   winProbability: (matchId: string) => api.get<APIResponse<WinProbability>>(`/prematch/${matchId}/win-probability`),
+  advisor: (matchId: string) => api.get<APIResponse<CoachAdvice>>(`/prematch/${matchId}/advisor`),
   xiRecommendation: (matchId: string, franchiseId: string, seasonId: string) =>
     api.get<APIResponse<PlayingXIRecommendation>>(
       `/prematch/${matchId}/xi-recommendation?franchise_id=${franchiseId}&season_id=${seasonId}`

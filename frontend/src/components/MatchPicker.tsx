@@ -68,40 +68,45 @@ export function MatchPicker({
     );
   }, [matchesRes, q]);
 
+  // Clean up raw database enum prefixes
+  const formatTournamentName = (name: string) => {
+    return name.replace("TournamentNameEnum.", "");
+  };
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-surface text-text-primary">
       <PageHeader title={title} subtitle={subtitle} />
 
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto p-4 bg-surface">
         <Card>
-          <CardHeader title="Select a match" subtitle="Pick a fixture to open" />
+          <CardHeader title="Select a Match" subtitle="Pick a fixture to open" />
 
           {/* Season + search controls */}
-          <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <div className="flex items-center gap-3 mb-4 flex-wrap bg-surface-elevated/20 p-2.5 rounded-xl border border-surface-border/50">
             <div className="flex items-center gap-2">
-              <Calendar size={14} className="text-gray-500" />
+              <Calendar size={14} className="text-text-secondary" />
               <select
                 value={effectiveSeason}
                 onChange={(e) => setSeasonId(e.target.value)}
-                className="bg-surface-elevated border border-surface-border rounded-md px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-signal-green"
+                className="bg-surface border border-surface-border rounded-lg px-2.5 py-1.5 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-brand font-medium transition-all"
               >
                 {seasons.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.tournament_name} {s.year}
+                    {formatTournamentName(s.tournament_name)} {s.year}
                   </option>
                 ))}
               </select>
             </div>
             <div className="flex items-center gap-2 flex-1 min-w-[180px]">
-              <Search size={14} className="text-gray-500" />
+              <Search size={14} className="text-text-secondary" />
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search team or city…"
-                className="bg-surface-elevated border border-surface-border rounded-md px-2 py-1.5 text-sm text-gray-200 w-full focus:outline-none focus:border-signal-green"
+                className="bg-surface border border-surface-border rounded-lg px-2.5 py-1.5 text-xs text-text-primary w-full focus:outline-none focus:ring-1 focus:ring-brand transition-all"
               />
             </div>
-            <span className="text-xs text-gray-500">{matches.length} matches</span>
+            <span className="text-xs text-text-secondary font-medium font-mono">{matches.length} matches found</span>
           </div>
 
           {isLoading ? (
@@ -111,7 +116,7 @@ export function MatchPicker({
           ) : matches.length === 0 ? (
             <EmptyState message="No matches for this season" />
           ) : (
-            <div className="space-y-1.5 max-h-[calc(100vh-280px)] overflow-y-auto">
+            <div className="space-y-1.5 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
               {matches.map((m) => (
                 <MatchRow key={m.id} match={m} onClick={() => navigate(`${basePath}/${m.id}`)} />
               ))}
@@ -146,27 +151,27 @@ function MatchRow({ match: m, onClick }: { match: Match; onClick: () => void }) 
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-surface-elevated transition-colors text-left border border-transparent hover:border-surface-border"
+      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-surface-elevated transition-colors text-left border border-transparent hover:border-surface-border/50"
     >
-      <span className="text-[10px] text-gray-600 font-mono w-14 flex-shrink-0">
+      <span className="text-[10px] text-text-secondary font-mono w-16 flex-shrink-0 leading-tight">
         {m.match_number ? `#${m.match_number}` : ""}
         <br />
         {date}
       </span>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 text-sm">
-          <span className="font-medium text-gray-200">{m.team1.short_name}</span>
-          <span className="text-gray-600 text-xs">vs</span>
-          <span className="font-medium text-gray-200">{m.team2.short_name}</span>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="font-extrabold text-text-primary uppercase">{m.team1.short_name}</span>
+          <span className="text-text-tertiary text-[10px] font-bold lowercase">vs</span>
+          <span className="font-extrabold text-text-primary uppercase">{m.team2.short_name}</span>
           {m.match_type !== "MatchTypeEnum.League" && m.match_type !== "League" && (
-            <Badge label={m.match_type.replace("MatchTypeEnum.", "")} variant="purple" />
+            <span className="ml-1"><Badge label={m.match_type.replace("MatchTypeEnum.", "")} variant="purple" /></span>
           )}
         </div>
-        <p className="text-[11px] text-gray-500 truncate">
+        <p className="text-[11px] text-text-secondary truncate mt-0.5">
           {m.venue.name}, {m.venue.city} · {result}
         </p>
       </div>
-      <ChevronRight size={14} className="text-gray-600 flex-shrink-0" />
+      <ChevronRight size={14} className="text-text-tertiary flex-shrink-0" />
     </button>
   );
 }

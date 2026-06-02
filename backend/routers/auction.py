@@ -14,6 +14,10 @@ from crud.auction import (
     get_lot_bids, create_bid,
 )
 from services.auction_service import get_bid_recommendation
+from services.auction_engine import (
+    open_auction, tick as engine_tick, user_bid as engine_user_bid, pass_lot as engine_pass,
+    advisor as engine_advisor,
+)
 from schemas.auction import (
     AuctionSessionOut, AuctionLotOut, TeamAuctionStateOut,
     BidOut, BidIn, BidRecommendationOut, AuctionQueueItem,
@@ -22,6 +26,56 @@ from schemas.player import PlayerOut
 from schemas.response import APIResponse, PaginatedResponse
 
 router = APIRouter(prefix="/auction", tags=["Auction War Room"])
+
+
+# ── Interactive auction engine (live game loop) ───────────────────────────
+
+@router.post("/sessions/{session_id}/open", response_model=APIResponse[dict])
+def open_session(session_id: UUID, franchise_id: UUID = Query(...), db: Session = Depends(get_db)):
+    """Reset & start the interactive auction for this user franchise; present lot #1."""
+    result = open_auction(db, session_id, str(franchise_id))
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return APIResponse(data=result, message="Auction opened")
+
+
+@router.post("/sessions/{session_id}/tick", response_model=APIResponse[dict])
+def tick_session(session_id: UUID, db: Session = Depends(get_db)):
+    """Advance the auction one beat: a rival agent bids, or the hammer falls."""
+    result = engine_tick(db, session_id)
+    if "error" in result:
+        raise HTTPException(status_code=409, detail=result["error"])
+    return APIResponse(data=result)
+
+
+@router.post("/sessions/{session_id}/user-bid", response_model=APIResponse[dict])
+def user_bid_session(
+    session_id: UUID,
+    payload: BidIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The human franchise raises the bid on the current lot."""
+    verify_franchise_access(current_user, payload.franchise_id)
+    result = engine_user_bid(db, session_id, payload.franchise_id, float(payload.bid_amount_cr))
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return APIResponse(data=result, message="Bid placed")
+
+
+@router.post("/sessions/{session_id}/pass", response_model=APIResponse[dict])
+def pass_session(session_id: UUID, db: Session = Depends(get_db)):
+    """Bring the hammer down now (sell to highest bidder, or mark unsold)."""
+    result = engine_pass(db, session_id)
+    if "error" in result:
+        raise HTTPException(status_code=409, detail=result["error"])
+    return APIResponse(data=result)
+
+
+@router.get("/sessions/{session_id}/advisor", response_model=APIResponse[dict])
+def auction_advisor(session_id: UUID, franchise_id: UUID = Query(...), db: Session = Depends(get_db)):
+    """AI Advisor agent: LLM reasoning on the current lot (falls back to ML if no LLM key)."""
+    return APIResponse(data=engine_advisor(db, session_id, franchise_id))
 
 
 @router.get("/sessions/active", response_model=APIResponse[list[AuctionSessionOut]])

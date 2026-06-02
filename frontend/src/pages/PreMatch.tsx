@@ -8,6 +8,7 @@ import {
 } from "../components/ui";
 import { Star } from "lucide-react";
 import { MatchPicker } from "../components/MatchPicker";
+import { CoachAdvisorCard } from "../components/CoachAdvisorCard";
 import { useTheme } from "../context/ThemeContext";
 
 const FRANCHISE_ID = import.meta.env.VITE_FRANCHISE_ID ?? "";
@@ -31,6 +32,12 @@ export function PreMatch() {
     queryKey: ["prematch", mid, "xi", activeFranchiseId],
     queryFn: () => prematchApi.xiRecommendation(mid, activeFranchiseId, SEASON_ID),
     enabled: !!mid && !!activeFranchiseId && !!SEASON_ID,
+  });
+
+  const { data: advisorRes } = useQuery({
+    queryKey: ["prematch", mid, "advisor"],
+    queryFn: () => prematchApi.advisor(mid),
+    enabled: !!mid,
   });
 
   const wp = wpRes?.data;
@@ -84,6 +91,7 @@ export function PreMatch() {
 
           {/* Key Factors + Impact Player */}
           <div className="col-span-5 space-y-4">
+            <CoachAdvisorCard title="AI Coach Briefing" advice={advisorRes?.data} />
             {wp?.key_factors && wp.key_factors.length > 0 && (
               <KeyFactorsCard factors={wp.key_factors} />
             )}

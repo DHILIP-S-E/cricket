@@ -14,7 +14,7 @@ from crud.live import (
 )
 from services.live_service import (
     compute_live_win_probability, get_bowler_recommendation, get_live_recommendations,
-    simulate_what_if,
+    simulate_what_if, get_live_advisor,
 )
 from services.simulation_service import (
     start_simulation, step_ball, reset_simulation,
@@ -113,6 +113,12 @@ def bowler_recommendation(match_id: UUID, db: Session = Depends(get_db)):
         match_id=match_id,
     )
     return APIResponse(data=result)
+
+
+@router.get("/{match_id}/advisor", response_model=APIResponse[dict])
+def live_advisor(match_id: UUID, db: Session = Depends(get_db)):
+    """Tactical Advisor agent: live LLM coaching (falls back to ML strategy if no LLM key)."""
+    return APIResponse(data=get_live_advisor(db, match_id))
 
 
 @router.get("/{match_id}/recommendations", response_model=APIResponse[LiveRecommendationsOut])
