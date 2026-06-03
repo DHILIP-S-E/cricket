@@ -72,10 +72,18 @@ export interface AuctionEngineEvent {
   player: string;
 }
 
+export interface AuctionSeat {
+  franchise_id: string;
+  franchise_name: string;
+  user_name: string | null;
+  autopilot: boolean;
+}
+
 export interface AuctionEngineState {
   phase: "idle" | "bidding" | "sold" | "unsold" | "finished";
   lot: { lot_number: number; player_id: string; player_name: string; playing_role: string; base_price_cr: number } | null;
   current_price_cr: number | null;
+  next_price_cr: number | null;
   increment_cr: number;
   highest_bidder_id: string | null;
   highest_bidder_name: string | null;
@@ -85,7 +93,8 @@ export interface AuctionEngineState {
   events: AuctionEngineEvent[];
   last_result: { player_name: string; price_cr: number | null; sold_to_name: string | null; sold: boolean } | null;
   finished: boolean;
-  autopilot: boolean;
+  seats: AuctionSeat[];
+  user_franchise_id: string | null;
   total_sold: number;
   total_unsold: number;
 }

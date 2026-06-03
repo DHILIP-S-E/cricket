@@ -1,14 +1,15 @@
-import { useState, useEffect, useRef } from "react";
-import { useQuery, useQueryClient, useMutation } from "../lib/query";
+import { useState, useEffect, useCallback } from "react";
+import { useQuery } from "../lib/query";
 import {
-  Gavel, TrendingUp, AlertCircle, ChevronRight, Loader2,
-  Play, Pause, SkipForward, Hammer, RotateCcw, Bot,
+  Gavel, ChevronRight, Loader2, Play, Hammer, RotateCcw, Bot, Users, Wifi, WifiOff,
 } from "lucide-react";
 import { auctionApi } from "../api/cricket";
 import type { AuctionEngineState, AdvisorResult } from "../api/cricket";
 import { Sparkles } from "lucide-react";
+import { useWebSocket } from "../api/websocket";
+import { tokenStore } from "../api/api_base";
 import {
-  Card, CardHeader, Stat, Badge, ConfidenceBadge, RoleBadge,
+  Card, CardHeader, Stat, Badge, RoleBadge,
   BudgetMeter, PageHeader, EmptyState,
 } from "../components/ui";
 import type { TeamAuctionState } from "../types/cricket";
@@ -23,27 +24,60 @@ const TEAM_COLORS: Record<string, string> = {
   GT: "#1C3D6E", LSG: "#6CBDE7",
 };
 
+type AuctionAction =
+  | { action: "start" }
+  | { action: "claim"; franchise_id: string }
+  | { action: "release"; franchise_id: string }
+  | { action: "autopilot"; franchise_id: string; on: boolean }
+  | { action: "bid"; franchise_id: string; amount: number }
+  | { action: "pass" };
+
 export function AuctionRoom() {
-  const qc = useQueryClient();
   const { franchise: themeFranchise } = useTheme();
   const activeFranchiseId = FRANCHISE_ID || themeFranchise;
 
+  // ── Real-time state: the server pushes the whole snapshot; we just render it.
   const [engine, setEngine] = useState<AuctionEngineState | null>(null);
-  const [playing, setPlaying] = useState(false);
-  const [speedMs, setSpeedMs] = useState(1100);
+  const [connected, setConnected] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  // The franchise the server says this connection may act for (from the token).
+  const [myFid, setMyFid] = useState<string | null>(null);
 
+  const handleMsg = useCallback((data: Record<string, unknown>) => {
+    switch (data.type) {
+      case "auction_state":
+        setEngine(data as unknown as AuctionEngineState);
+        setActionError(null);
+        break;
+      case "action_error":
+        setActionError(String(data.message ?? "Action rejected"));
+        break;
+      case "connected": {
+        setConnected(true);
+        const you = data.you as { franchise_id?: string } | null | undefined;
+        if (you?.franchise_id) setMyFid(you.franchise_id);
+        break;
+      }
+    }
+  }, []);
+
+  const token = tokenStore.get();
+  const wsPath = `/ws/auction/${SESSION_ID}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+  const { send } = useWebSocket(wsPath, handleMsg, !!SESSION_ID);
+  const act = useCallback((a: AuctionAction) => send(a), [send]);
+
+  // Supplementary read-only data (not the loop): refreshed as lots resolve.
+  const soldCount = engine?.total_sold ?? 0;
   const { data: teamsRes } = useQuery({
-    queryKey: ["auction", "teams", SESSION_ID],
+    queryKey: ["auction", "teams", SESSION_ID, soldCount],
     queryFn: () => auctionApi.teamStates(SESSION_ID),
-    refetchInterval: 6000,
     enabled: !!SESSION_ID,
   });
   const teams = teamsRes?.data ?? [];
-  const myTeam = teams.find(t => t.franchise_id === activeFranchiseId)
+  const myTeam = teams.find(t => t.franchise_id === (myFid ?? activeFranchiseId))
     || teams.find(t => t.franchise_short_name === activeFranchiseId);
-  const myFranchiseId = myTeam?.franchise_id ?? activeFranchiseId;
+  const myFranchiseId = myFid ?? myTeam?.franchise_id ?? activeFranchiseId;
 
-  // AI recommendation for the lot currently under the hammer.
   const lotPlayerId = engine?.lot?.player_id;
   const { data: recRes } = useQuery({
     queryKey: ["auction", "rec", SESSION_ID, myFranchiseId, lotPlayerId],
@@ -52,7 +86,6 @@ export function AuctionRoom() {
   });
   const rec = recRes?.data;
 
-  // AI Advisor agent (LLM reasoning) for the current lot.
   const { data: advisorRes } = useQuery({
     queryKey: ["auction", "advisor", SESSION_ID, myFranchiseId, lotPlayerId],
     queryFn: () => auctionApi.advisor(SESSION_ID, myFranchiseId),
@@ -61,60 +94,16 @@ export function AuctionRoom() {
   const advisor = advisorRes?.data;
 
   const { data: queueRes } = useQuery({
-    queryKey: ["auction", "queue", SESSION_ID],
+    queryKey: ["auction", "queue", SESSION_ID, soldCount],
     queryFn: () => auctionApi.queue(SESSION_ID),
-    refetchInterval: 12000,
     enabled: !!SESSION_ID,
   });
   const queue = queueRes?.data ?? [];
 
-  const apply = (s?: AuctionEngineState) => {
-    if (s) setEngine(s);
-    qc.invalidateQueries({ queryKey: ["auction", "teams"] });
-  };
-  const openM = useMutation({
-    mutationFn: () => auctionApi.open(SESSION_ID, myFranchiseId),
-    onSuccess: (r) => apply(r.data),
-  });
-  const tickM = useMutation({
-    mutationFn: () => auctionApi.tick(SESSION_ID),
-    onSuccess: (r) => apply(r.data),
-    onError: (err) => {
-      // A failed tick must halt auto-play, otherwise the interval keeps
-      // hammering the endpoint (the 409 "Auction not open" flood).
-      setPlaying(false);
-      // 409 = engine state was lost (e.g. backend restarted/reloaded).
-      // Drop the local engine so the "Start Auction" button returns.
-      if ((err as { status?: number }).status === 409) setEngine(null);
-    },
-  });
-  const bidM = useMutation({
-    mutationFn: (amount: number) => auctionApi.engineBid(SESSION_ID, myFranchiseId, amount),
-    onSuccess: (r) => apply(r.data),
-  });
-  const passM = useMutation({
-    mutationFn: () => auctionApi.passLot(SESSION_ID),
-    onSuccess: (r) => apply(r.data),
-  });
-  const autopilotM = useMutation({
-    mutationFn: (on: boolean) => auctionApi.setAutopilot(SESSION_ID, on),
-    onSuccess: (r) => { apply(r.data); if (r.data?.autopilot) setPlaying(true); },
-  });
-
-  // Auto-play: tick on an interval until the auction finishes.
-  const playingRef = useRef(playing);
-  playingRef.current = playing;
-  useEffect(() => {
-    if (!playing) return;
-    const t = setInterval(() => {
-      if (playingRef.current && !tickM.isPending) tickM.mutate();
-    }, speedMs);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, speedMs]);
-  useEffect(() => {
-    if (engine?.finished) setPlaying(false);
-  }, [engine?.finished]);
+  // My seat in the lobby (if I've claimed my franchise).
+  const mySeat = engine?.seats.find(s => s.franchise_id === myFranchiseId);
+  const iAmSeated = !!mySeat;
+  const myAutopilot = !!mySeat?.autopilot;
 
   if (!SESSION_ID) {
     return (
@@ -142,70 +131,66 @@ export function AuctionRoom() {
                 {" "}· Unsold: <span className="text-red-500 font-mono font-bold">{engine.total_unsold}</span>
               </span>
             )}
+            <span className={`inline-flex items-center gap-1 font-semibold ${connected ? "text-brand" : "text-text-tertiary"}`}>
+              {connected ? <Wifi size={13} /> : <WifiOff size={13} />}
+              {connected ? "Live" : "Connecting…"}
+            </span>
           </div>
         }
       />
 
-      {/* Control bar */}
+      {/* Lobby / seats — who controls each franchise */}
+      <SeatBar
+        teams={teams}
+        seats={engine?.seats ?? []}
+        myFranchiseId={myFranchiseId}
+        iAmSeated={iAmSeated}
+        onClaim={() => act({ action: "claim", franchise_id: myFranchiseId })}
+        onRelease={() => act({ action: "release", franchise_id: myFranchiseId })}
+        canClaim={started}
+      />
+
+      {/* Control bar — the server drives the clock; you act, you don't poll */}
       <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-card border border-surface-border">
         {!started ? (
           <button
-            onClick={() => openM.mutate()}
-            disabled={openM.isPending}
+            onClick={() => act({ action: "start" })}
+            disabled={!connected}
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-bold hover:opacity-90 transition-opacity disabled:opacity-40"
           >
-            <Play size={13} /> {openM.isPending ? "Opening…" : "Start Auction"}
+            <Play size={13} /> {connected ? "Start Auction" : "Connecting…"}
           </button>
         ) : (
           <>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-text-secondary">
+              <span className="live-dot" /> Auction running — agents bidding live
+            </span>
             <button
-              onClick={() => setPlaying((p) => !p)}
-              disabled={engine?.finished}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-bold hover:opacity-90 transition-opacity disabled:opacity-40"
-            >
-              {playing ? <Pause size={13} /> : <Play size={13} />}{playing ? "Pause" : "Auto-play"}
-            </button>
-            <button
-              onClick={() => tickM.mutate()}
-              disabled={playing || tickM.isPending || engine?.finished}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-elevated border border-surface-border text-text-primary text-xs font-semibold hover:bg-surface transition-colors disabled:opacity-40"
-            >
-              <SkipForward size={13} /> Next
-            </button>
-            <button
-              onClick={() => passM.mutate()}
+              onClick={() => act({ action: "pass" })}
               disabled={engine?.phase !== "bidding"}
+              title="Bring the hammer down on this lot now"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-elevated border border-surface-border text-text-secondary text-xs font-semibold hover:text-text-primary transition-colors disabled:opacity-40"
             >
               <Hammer size={13} /> Gavel
             </button>
             <button
-              onClick={() => { setPlaying(false); openM.mutate(); }}
+              onClick={() => act({ action: "start" })}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-elevated border border-surface-border text-text-secondary text-xs font-semibold hover:text-text-primary transition-colors"
             >
               <RotateCcw size={13} /> Restart
             </button>
             <button
-              onClick={() => autopilotM.mutate(!engine?.autopilot)}
-              disabled={engine?.finished}
-              title="Let the AI agent bid for your franchise"
+              onClick={() => act({ action: "autopilot", franchise_id: myFranchiseId, on: !myAutopilot })}
+              disabled={engine?.finished || !iAmSeated}
+              title={iAmSeated ? "Let the AI agent bid for your franchise" : "Claim your franchise first"}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 ${
-                engine?.autopilot
+                myAutopilot
                   ? "bg-brand text-white"
                   : "bg-surface-elevated border border-surface-border text-text-secondary hover:text-brand"
               }`}
             >
-              <Bot size={13} /> {engine?.autopilot ? "Auto-pilot ON" : "Auto-pilot"}
+              <Bot size={13} /> {myAutopilot ? "Auto-pilot ON" : "Auto-pilot"}
             </button>
-            <div className="flex items-center gap-1.5 ml-auto">
-              <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Speed</span>
-              {[{ l: "0.5x", v: 2000 }, { l: "1x", v: 1100 }, { l: "2x", v: 550 }, { l: "Fast", v: 250 }].map((s) => (
-                <button key={s.v} onClick={() => setSpeedMs(s.v)}
-                  className={`px-2 py-1 rounded text-[11px] font-bold transition-colors ${
-                    speedMs === s.v ? "bg-brand text-white" : "bg-surface-elevated text-text-secondary hover:text-text-primary"
-                  }`}>{s.l}</button>
-              ))}
-            </div>
           </>
         )}
       </div>
@@ -218,10 +203,9 @@ export function AuctionRoom() {
             <EngineLotCard
               engine={engine}
               rec={rec}
-              canBid={!!myTeam}
-              bidding={bidM.isPending}
-              bidError={bidM.error as Error | null}
-              onBid={(amt) => bidM.mutate(amt)}
+              canBid={iAmSeated && !myAutopilot}
+              bidError={actionError}
+              onBid={(amt) => act({ action: "bid", franchise_id: myFranchiseId, amount: amt })}
             />
             {engine?.phase === "bidding" && <AdvisorCard advisor={advisor} />}
             {myTeam && <MySquadCard team={myTeam} />}
@@ -230,7 +214,7 @@ export function AuctionRoom() {
           {/* CENTRE — Squad builder + team budgets */}
           <div className="col-span-5 space-y-4">
             <SquadSlotGrid team={myTeam} />
-            <TeamBudgetsCard teams={teams} myFranchiseId={activeFranchiseId} />
+            <TeamBudgetsCard teams={teams} myFranchiseId={myFranchiseId} />
           </div>
 
           {/* RIGHT — Live bid feed + queue */}
@@ -245,14 +229,75 @@ export function AuctionRoom() {
   );
 }
 
+// ─── Lobby / Seat bar ─────────────────────────────────────────────────────────
+
+function SeatBar({ teams, seats, myFranchiseId, iAmSeated, onClaim, onRelease, canClaim }: {
+  teams: TeamAuctionState[];
+  seats: { franchise_id: string; franchise_name: string; user_name: string | null; autopilot: boolean }[];
+  myFranchiseId: string;
+  iAmSeated: boolean;
+  onClaim: () => void;
+  onRelease: () => void;
+  canClaim: boolean;
+}) {
+  if (!teams.length) return null;
+  const seatFor = (fid: string) => seats.find(s => s.franchise_id === fid);
+
+  return (
+    <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-card border border-surface-border overflow-x-auto">
+      <span className="inline-flex items-center gap-1.5 text-[10px] uppercase font-extrabold tracking-wider text-text-secondary flex-shrink-0">
+        <Users size={13} /> Lobby
+      </span>
+      <div className="flex items-center gap-1.5">
+        {teams.map(t => {
+          const seat = seatFor(t.franchise_id);
+          const isMine = t.franchise_id === myFranchiseId;
+          const human = !!seat;
+          return (
+            <div
+              key={t.franchise_id}
+              title={human ? `${seat!.user_name ?? "Player"}${seat!.autopilot ? " · auto-pilot" : ""}` : "AI agent"}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border flex-shrink-0 ${
+                isMine ? "border-brand bg-brand/10 text-brand"
+                : human ? "border-surface-border bg-surface-elevated text-text-primary"
+                : "border-dashed border-surface-border text-text-tertiary"
+              }`}
+            >
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: TEAM_COLORS[t.franchise_short_name] ?? "var(--color-brand)" }}
+              />
+              {t.franchise_short_name}
+              {human
+                ? <span className="opacity-70">{seat!.autopilot ? "🤖" : "🧑"}</span>
+                : <span className="opacity-60 text-[9px]">AI</span>}
+            </div>
+          );
+        })}
+      </div>
+      {canClaim && (
+        <button
+          onClick={iAmSeated ? onRelease : onClaim}
+          className={`ml-auto flex-shrink-0 px-3 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+            iAmSeated
+              ? "bg-surface-elevated border border-surface-border text-text-secondary hover:text-text-primary"
+              : "bg-brand text-white hover:opacity-90"
+          }`}
+        >
+          {iAmSeated ? "Leave seat" : "Claim my franchise"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── Engine-driven Current Lot Card ───────────────────────────────────────────
 
-function EngineLotCard({ engine, rec, canBid, bidding, bidError, onBid }: {
+function EngineLotCard({ engine, rec, canBid, bidError, onBid }: {
   engine: AuctionEngineState | null;
   rec: any;
   canBid: boolean;
-  bidding: boolean;
-  bidError: Error | null;
+  bidError: string | null;
   onBid: (amount: number) => void;
 }) {
   if (!engine || engine.phase === "idle") {
@@ -299,7 +344,7 @@ function EngineLotCard({ engine, rec, canBid, bidding, bidError, onBid }: {
   // phase === "bidding"
   const lot = engine.lot!;
   const price = engine.current_price_cr ?? lot.base_price_cr;
-  const nextPrice = +(price + engine.increment_cr).toFixed(2);
+  const nextPrice = engine.next_price_cr ?? +(price + engine.increment_cr).toFixed(2);
   const aiMax = rec?.recommended_max_bid_cr as number | undefined;
   const shouldBid = rec?.should_bid;
   const youHigh = engine.user_is_highest;
@@ -363,25 +408,25 @@ function EngineLotCard({ engine, rec, canBid, bidding, bidError, onBid }: {
       <div className="border-t border-surface-border pt-3 space-y-2">
         <button
           onClick={() => onBid(nextPrice)}
-          disabled={bidding || !canBid || youHigh}
+          disabled={!canBid || youHigh}
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-brand text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-40"
         >
-          {bidding ? <Loader2 size={15} className="animate-spin" /> : <Gavel size={15} />}
+          <Gavel size={15} />
           {youHigh ? "You're the highest bidder" : `Bid ₹${nextPrice.toFixed(2)} Cr`}
         </button>
         {aiMax != null && nextPrice <= aiMax && !youHigh && (
           <button
             onClick={() => onBid(+aiMax.toFixed(2))}
-            disabled={bidding || !canBid}
+            disabled={!canBid}
             className="w-full py-2 rounded-xl bg-surface-elevated border border-surface-border text-text-secondary hover:text-brand text-xs font-bold transition-colors disabled:opacity-40"
           >
             Jump to AI max ₹{aiMax.toFixed(2)} Cr
           </button>
         )}
         {!canBid && (
-          <p className="text-[10px] text-amber-500 text-center">Log in as this franchise to bid.</p>
+          <p className="text-[10px] text-amber-500 text-center">Claim your franchise (and turn off auto-pilot) to bid.</p>
         )}
-        {bidError && <p className="text-[10px] text-red-500 text-center">{bidError.message}</p>}
+        {bidError && <p className="text-[10px] text-red-500 text-center">{bidError}</p>}
       </div>
     </Card>
   );

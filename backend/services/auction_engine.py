@@ -36,8 +36,8 @@ from services import llm_agent
 
 logger = logging.getLogger(__name__)
 
-MAX_IDLE_TICKS = 3          # ticks with no new bid before the hammer falls
-RECENT_EVENTS = 10
+MAX_IDLE_TICKS = 4          # ticks with no new bid before the hammer falls (~7s at 1.8s/tick)
+RECENT_EVENTS = 12
 
 
 # ── transient in-memory engine state, keyed by session id ──────────────
@@ -74,6 +74,16 @@ def _role_bucket(role_value: str) -> str:
     return "batter_count"
 
 
+# ── accessors (used by the real-time WebSocket layer) ────────────────────
+
+def is_open(session_id: UUID) -> bool:
+    return str(session_id) in _ENGINE
+
+
+def current_snapshot(db: Session, session_id: UUID) -> dict | None:
+    return _snapshot(db, session_id) if str(session_id) in _ENGINE else None
+
+
 # ── lifecycle ──────────────────────────────────────────────────────────
 
 def open_auction(db: Session, session_id: UUID, user_franchise_id: str | None) -> dict:
@@ -103,17 +113,24 @@ def open_auction(db: Session, session_id: UUID, user_franchise_id: str | None) -
     db.commit()
 
     _ENGINE[str(session_id)] = {
+        # Multiplayer seats: franchise_id -> {"user_id","user_name","autopilot"}.
+        # A franchise NOT in `seats` is run by an autonomous AI agent.
+        "seats": {},
+        # The franchise the opener controls (kept for single-player back-compat;
+        # also the default "you" for legacy single-seat callers).
         "user_franchise_id": str(user_franchise_id) if user_franchise_id else None,
         "phase": "idle",
         "ticks_idle": 0,
         "increment": 0.10,
-        "agent_max": {},        # franchise_id -> max bid this lot
+        "agent_max": {},        # franchise_id -> max bid this lot (every auto-bidder)
         "events": [],
         "last_result": None,
-        "autopilot": False,     # AI bids for the user franchise autonomously
-        "user_max": 0.0,        # cached autopilot ceiling for the current lot
-        "user_max_for": None,   # player_id the cache is valid for
     }
+    # The opener auto-claims their franchise as a human seat (manual by default).
+    if user_franchise_id:
+        _ENGINE[str(session_id)]["seats"][str(user_franchise_id)] = {
+            "user_id": None, "user_name": "You", "autopilot": False,
+        }
     return _present_next_lot(db, session_id)
 
 
@@ -143,23 +160,29 @@ def _present_next_lot(db: Session, session_id: UUID) -> dict:
     st["phase"] = "bidding"
     st["ticks_idle"] = 0
     st["increment"] = _increment_for(base)
-    st["agent_max"] = _compute_agent_maxbids(db, session_id, lot)
+    st["agent_max"] = _auto_maxbids(db, session_id, lot)
     st["events"] = ([{"actor": "Auctioneer", "action": "presented",
                       "amount": base, "player": lot.player.full_name}]
                     + st["events"])[:RECENT_EVENTS]
     return _snapshot(db, session_id)
 
 
-def _compute_agent_maxbids(db: Session, session_id: UUID, lot: AuctionLot) -> dict:
-    """Each rival franchise's persona-scaled max bid for this lot (cached)."""
+def _auto_maxbids(db: Session, session_id: UUID, lot: AuctionLot) -> dict:
+    """Max bid for every franchise the engine bids on autonomously this lot.
+
+    That is: unclaimed seats (AI personas) + claimed seats with auto-pilot on.
+    Franchises with a human seat bidding manually are excluded — they only bid
+    through user_bid(). Capped at each team's remaining budget.
+    """
     st = _ENGINE[str(session_id)]
     session = get_session(db, session_id)
-    user_fid = st["user_franchise_id"]
+    seats = st["seats"]
     out: dict[str, float] = {}
     for ts in get_all_team_states(db, session_id):
         fid = str(ts.franchise_id)
-        if fid == user_fid:
-            continue
+        seat = seats.get(fid)
+        if seat is not None and not seat.get("autopilot"):
+            continue  # human bidding manually — not auto-bid
         try:
             rec = get_bid_recommendation(db, session_id, ts.franchise_id,
                                          lot.player_id, session.season_id)
@@ -169,8 +192,10 @@ def _compute_agent_maxbids(db: Session, session_id: UUID, lot: AuctionLot) -> di
         if not rec.get("should_bid"):
             out[fid] = 0.0
             continue
-        agg = _persona_aggression(fid)
-        out[fid] = round(float(rec.get("recommended_max_bid_cr", 0)) * agg, 2)
+        base_max = float(rec.get("recommended_max_bid_cr", 0))
+        # Human auto-pilot is a touch more aggressive; AI uses its persona.
+        scale = 1.2 if seat is not None else _persona_aggression(fid)
+        out[fid] = round(min(base_max * scale, float(ts.remaining_budget_cr)), 2)
     return out
 
 
@@ -200,29 +225,21 @@ def tick(db: Session, session_id: UUID) -> dict:
     inc = st["increment"]
     next_price = round((price + inc) if price is not None else base, 2)
 
-    # Auto-pilot: the AI bids on the user's behalf (perceive → reason → act).
-    user_fid = st.get("user_franchise_id")
-    if st.get("autopilot") and user_fid and highest != user_fid:
-        umax = _user_autopilot_max(db, session_id, lot)
-        if umax >= next_price and _has_room(db, session_id, user_fid):
-            create_bid(db, lot.id, UUID(user_fid), next_price)
-            st["ticks_idle"] = 0
-            st["events"] = ([{"actor": "You (auto)", "action": "bid", "amount": next_price,
-                              "player": lot.player.full_name}] + st["events"])[:RECENT_EVENTS]
-            return _snapshot(db, session_id)
-
-    # Which rival agent (if any) is willing to bid next_price?
+    # Which auto-bidder (AI seat or human on auto-pilot) will bid next_price?
+    # Manual human seats are absent from agent_max, so they're never auto-bid.
     candidates = [
         (fid, mx) for fid, mx in st["agent_max"].items()
         if mx >= next_price and fid != highest and _has_room(db, session_id, fid)
     ]
     if candidates:
-        # Most aggressive willing agent bids one increment.
+        # Most aggressive willing bidder raises by one increment.
         fid, _ = max(candidates, key=lambda kv: kv[1])
         create_bid(db, lot.id, UUID(fid), next_price)
         st["ticks_idle"] = 0
+        seat = st["seats"].get(fid)
         name = _franchise_name(db, fid)
-        st["events"] = ([{"actor": name, "action": "bid", "amount": next_price,
+        actor = f"{name} (auto)" if seat is not None else name
+        st["events"] = ([{"actor": actor, "action": "bid", "amount": next_price,
                           "player": lot.player.full_name}] + st["events"])[:RECENT_EVENTS]
         return _snapshot(db, session_id)
 
@@ -255,7 +272,8 @@ def user_bid(db: Session, session_id: UUID, franchise_id: UUID, amount: float) -
 
     create_bid(db, lot.id, franchise_id, amount)
     st["ticks_idle"] = 0
-    st["events"] = ([{"actor": "You", "action": "bid", "amount": round(amount, 2),
+    st["events"] = ([{"actor": _franchise_name(db, str(franchise_id)), "action": "bid",
+                      "amount": round(amount, 2),
                       "player": lot.player.full_name}] + st["events"])[:RECENT_EVENTS]
     return _snapshot(db, session_id)
 
@@ -336,54 +354,70 @@ def _resolve_unsold(db: Session, session_id: UUID, lot: AuctionLot) -> dict:
     return _snapshot(db, session_id)
 
 
-# ── Auto-pilot: an LLM/ML agent that bids for the user autonomously ───────
+# ── Seats / lobby: humans claim franchises, AI runs the rest ──────────────
 
-def set_autopilot(db: Session, session_id: UUID, on: bool) -> dict:
+def _refresh_maxbids(db: Session, session_id: UUID) -> None:
+    """Recompute auto-bidder ceilings for the current lot after a seat change."""
+    st = _ENGINE.get(str(session_id))
+    if not st or st["phase"] != "bidding":
+        return
+    lot = get_current_lot(db, session_id)
+    if lot:
+        st["agent_max"] = _auto_maxbids(db, session_id, lot)
+
+
+def claim_seat(db: Session, session_id: UUID, franchise_id: UUID,
+               user_id: str | None = None, user_name: str | None = None) -> dict:
+    """A human takes control of a franchise (manual bidding by default)."""
     st = _ENGINE.get(str(session_id))
     if not st:
         return {"error": "Auction not open."}
-    st["autopilot"] = bool(on)
-    st["user_max_for"] = None  # force re-evaluation of the ceiling
+    fid = str(franchise_id)
+    seat = st["seats"].get(fid)
+    if seat and seat.get("user_id") and seat["user_id"] != user_id:
+        return {"error": "That franchise is already taken by another player."}
+    st["seats"][fid] = {
+        "user_id": user_id,
+        "user_name": user_name or _franchise_name(db, fid),
+        "autopilot": seat.get("autopilot", False) if seat else False,
+    }
+    _refresh_maxbids(db, session_id)  # this seat now bids manually
     return _snapshot(db, session_id)
 
 
-def _user_autopilot_max(db: Session, session_id: UUID, lot: AuctionLot) -> float:
-    """The autopilot's bid ceiling for the current lot (cached per lot).
+def release_seat(db: Session, session_id: UUID, franchise_id: UUID) -> dict:
+    """Hand a franchise back to the AI."""
+    st = _ENGINE.get(str(session_id))
+    if not st:
+        return {"error": "Auction not open."}
+    st["seats"].pop(str(franchise_id), None)
+    _refresh_maxbids(db, session_id)
+    return _snapshot(db, session_id)
 
-    ML gives the ceiling; if an LLM key is set, the Advisor's BID/HOLD/PASS
-    call gates it (PASS → don't bid, HOLD → bid only up to fair value)."""
-    st = _ENGINE[str(session_id)]
-    pid = str(lot.player_id)
-    if st.get("user_max_for") == pid:
-        return float(st.get("user_max", 0.0))
 
-    session = get_session(db, session_id)
-    fid = st["user_franchise_id"]
-    try:
-        rec = get_bid_recommendation(db, session_id, UUID(fid), lot.player_id, session.season_id)
-    except Exception:
-        rec = {"should_bid": False}
-    # Slight aggression so the autopilot competes with the rivals (who scale by persona).
-    umax = float(rec.get("recommended_max_bid_cr", 0)) * 1.2 if rec.get("should_bid") else 0.0
+def set_seat_autopilot(db: Session, session_id: UUID, franchise_id: UUID, on: bool) -> dict:
+    """Toggle auto-pilot for a claimed franchise (the AI bids on its behalf)."""
+    st = _ENGINE.get(str(session_id))
+    if not st:
+        return {"error": "Auction not open."}
+    fid = str(franchise_id)
+    seat = st["seats"].get(fid)
+    if not seat:
+        return {"error": "Claim the franchise before enabling auto-pilot."}
+    seat["autopilot"] = bool(on)
+    _refresh_maxbids(db, session_id)
+    return _snapshot(db, session_id)
 
-    if llm_agent.llm_available() and umax > 0:
-        try:
-            adv = advisor(db, session_id, UUID(fid))
-            if adv.get("call") == "PASS":
-                umax = 0.0
-            elif adv.get("call") == "HOLD":
-                umax = min(umax, float(rec.get("fair_value_cr", umax)))
-        except Exception:
-            logger.exception("autopilot LLM gate failed")
 
-    # Never bid beyond the remaining budget.
-    ts = get_team_state(db, session_id, UUID(fid))
-    if ts:
-        umax = min(umax, float(ts.remaining_budget_cr))
-
-    st["user_max"] = round(umax, 2)
-    st["user_max_for"] = pid
-    return st["user_max"]
+def set_autopilot(db: Session, session_id: UUID, on: bool) -> dict:
+    """Back-compat: toggle auto-pilot for the opener's franchise."""
+    st = _ENGINE.get(str(session_id))
+    if not st:
+        return {"error": "Auction not open."}
+    fid = st.get("user_franchise_id")
+    if not fid:
+        return {"error": "No franchise seat to put on auto-pilot."}
+    return set_seat_autopilot(db, session_id, UUID(fid), on)
 
 
 # ── AI Advisor agent (LLM reasoning, grounded in the ML numbers) ──────────
@@ -486,10 +520,17 @@ def _snapshot(db: Session, session_id: UUID) -> dict:
             "base_price_cr": float(lot.base_price_cr),
         }
 
+    seats = st["seats"]
+    next_price = None
+    if lot and st["phase"] == "bidding":
+        next_price = round((price + st["increment"]) if session.current_bid_amount_cr
+                           else float(lot.base_price_cr), 2)
+
     return {
         "phase": st["phase"],
         "lot": lot_out,
         "current_price_cr": round(price, 2) if price is not None else None,
+        "next_price_cr": next_price,
         "increment_cr": st["increment"],
         "highest_bidder_id": highest,
         "highest_bidder_name": _franchise_name(db, highest) if highest else None,
@@ -499,7 +540,15 @@ def _snapshot(db: Session, session_id: UUID) -> dict:
         "events": st["events"][:RECENT_EVENTS],
         "last_result": st["last_result"],
         "finished": st["phase"] == "finished",
-        "autopilot": st.get("autopilot", False),
+        # Lobby: who controls each franchise. Absent franchises are AI agents.
+        "seats": [
+            {"franchise_id": fid,
+             "franchise_name": _franchise_name(db, fid),
+             "user_name": seat.get("user_name"),
+             "autopilot": bool(seat.get("autopilot"))}
+            for fid, seat in seats.items()
+        ],
+        "user_franchise_id": user_fid,
         "total_sold": session.total_players_sold,
         "total_unsold": session.total_players_unsold,
     }

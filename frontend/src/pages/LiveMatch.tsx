@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery, useQueryClient, useMutation } from "../lib/query";
+import { useQuery, useQueryClient } from "../lib/query";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
@@ -24,82 +24,77 @@ export function LiveMatch() {
   const qc = useQueryClient();
   const [liveConnected, setLiveConnected] = useState(false);
 
-  useWebSocket(`/ws/live/${mid}`, (msg) => {
-    if (msg.type === "connected") setLiveConnected(true);
-    if (msg.type === "ball_update") {
-      qc.invalidateQueries({ queryKey: ["live", mid] });
+  // ─── Interactive simulation controls (the server drives the ball clock) ───
+  const [playing, setPlaying] = useState(false);
+  const [speedMs, setSpeedMs] = useState(900);
+  const [lastBall, setLastBall] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<string | null>(null);
+  const [oppPlan, setOppPlan] = useState<string | null>(null);
+
+  // Each pushed ball updates the live indicators and refreshes the rich
+  // read models (score / chart / recommendations) — no client polling loop.
+  const handleMsg = useCallback((msg: Record<string, unknown>) => {
+    switch (msg.type) {
+      case "connected":
+        setLiveConnected(true);
+        break;
+      case "live_state": {
+        const lb = msg.last_ball as { label?: string; runs?: number; wicket?: boolean; extra?: boolean } | null;
+        if (lb) setLastBall(lb.wicket ? "W" : lb.extra ? `${lb.label} (extra)` : String(lb.runs ?? ""));
+        if (msg.opposition_plan) setOppPlan(String(msg.opposition_plan));
+        if (msg.innings_over) { setOutcome(String(msg.outcome ?? "Innings complete")); setPlaying(false); }
+        qc.invalidateQueries({ queryKey: ["live", mid] });
+        break;
+      }
+      case "live_reset":
+        setPlaying(false); setOutcome(null); setLastBall(null); setOppPlan(null);
+        qc.invalidateQueries({ queryKey: ["live", mid] });
+        break;
     }
-  }, !!mid);
+  }, [qc, mid]);
+
+  const { send } = useWebSocket(`/ws/live/${mid}`, handleMsg, !!mid);
+
+  const togglePlay = useCallback(() => {
+    setPlaying((p) => {
+      send({ action: p ? "pause" : "play" });
+      return !p;
+    });
+  }, [send]);
+  const doStart = useCallback(() => {
+    setOutcome(null); setLastBall(null);
+    send({ action: "start" });
+  }, [send]);
+  const doStep = useCallback(() => send({ action: "step" }), [send]);
+  const doReset = useCallback(() => send({ action: "reset" }), [send]);
+  const setSpeed = useCallback((v: number) => {
+    setSpeedMs(v);
+    send({ action: "speed", interval: v / 1000 });
+  }, [send]);
 
   const { data: stateRes, isLoading } = useQuery({
     queryKey: ["live", mid, "state"],
     queryFn: () => liveApi.state(mid),
-    refetchInterval: 8000,
     enabled: !!mid,
   });
 
   const { data: wpRes } = useQuery({
     queryKey: ["live", mid, "wp"],
     queryFn: () => liveApi.winProbability(mid),
-    refetchInterval: 8000,
     enabled: !!mid,
   });
 
   const { data: recRes } = useQuery({
     queryKey: ["live", mid, "rec"],
     queryFn: () => liveApi.recommendations(mid),
-    refetchInterval: 8000,
     enabled: !!mid,
   });
 
   const { data: advisorRes } = useQuery({
     queryKey: ["live", mid, "advisor"],
     queryFn: () => liveApi.advisor(mid),
-    refetchInterval: 12000,
     enabled: !!mid,
   });
-
-  // ─── Interactive simulation controls ─────────────────────────────
-  const [playing, setPlaying] = useState(false);
-  const [speedMs, setSpeedMs] = useState(900);
-  const [lastBall, setLastBall] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState<string | null>(null);
-  const [oppPlan, setOppPlan] = useState<string | null>(null);
-  const refresh = () => qc.invalidateQueries({ queryKey: ["live", mid] });
-
-  const startSim = useMutation({
-    mutationFn: () => liveApi.simStart(mid),
-    onSuccess: () => { setOutcome(null); setLastBall(null); refresh(); },
-  });
-  const stepSim = useMutation({
-    mutationFn: () => liveApi.simStep(mid),
-    onSuccess: (res) => {
-      const d = res.data;
-      if (d?.last_ball) {
-        const lb = d.last_ball;
-        setLastBall(lb.wicket ? "W" : lb.extra ? `${lb.label} (extra)` : String(lb.runs));
-      }
-      if (d?.opposition_plan) setOppPlan(d.opposition_plan);
-      if (d?.innings_over) { setOutcome(d.outcome ?? "Innings complete"); setPlaying(false); }
-      refresh();
-    },
-  });
-  const resetSim = useMutation({
-    mutationFn: () => liveApi.simReset(mid),
-    onSuccess: () => { setPlaying(false); setOutcome(null); setLastBall(null); refresh(); },
-  });
-
-  // Auto-play loop
-  const playingRef = useRef(playing);
-  playingRef.current = playing;
-  useEffect(() => {
-    if (!playing) return;
-    const t = setInterval(() => {
-      if (playingRef.current && !stepSim.isPending) stepSim.mutate();
-    }, speedMs);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, speedMs, mid]);
 
   if (!mid) {
     return (
@@ -133,12 +128,12 @@ export function LiveMatch() {
               Start a ball-by-ball chase. The ML model recomputes the win probability after every delivery.
             </p>
             <button
-              onClick={() => startSim.mutate()}
-              disabled={startSim.isPending}
+              onClick={doStart}
+              disabled={!liveConnected}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50"
             >
               <Play size={16} />
-              {startSim.isPending ? "Starting…" : "Start Simulation"}
+              {liveConnected ? "Start Simulation" : "Connecting…"}
             </button>
           </div>
         </div>
@@ -179,7 +174,7 @@ export function LiveMatch() {
       {/* Simulation control bar */}
       <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-card border border-surface-border">
         <button
-          onClick={() => setPlaying((p) => !p)}
+          onClick={togglePlay}
           disabled={!!outcome}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-bold hover:opacity-90 transition-opacity disabled:opacity-40"
         >
@@ -187,14 +182,14 @@ export function LiveMatch() {
           {playing ? "Pause" : "Auto-play"}
         </button>
         <button
-          onClick={() => stepSim.mutate()}
-          disabled={playing || stepSim.isPending || !!outcome}
+          onClick={doStep}
+          disabled={playing || !!outcome}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-elevated border border-surface-border text-text-primary text-xs font-semibold hover:bg-surface transition-colors disabled:opacity-40"
         >
           <SkipForward size={13} /> Next Ball
         </button>
         <button
-          onClick={() => resetSim.mutate()}
+          onClick={doReset}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-elevated border border-surface-border text-text-secondary text-xs font-semibold hover:text-text-primary transition-colors"
         >
           <RotateCcw size={13} /> Reset
@@ -215,7 +210,7 @@ export function LiveMatch() {
           {[{ l: "0.5x", v: 1600 }, { l: "1x", v: 900 }, { l: "2x", v: 400 }, { l: "Fast", v: 150 }].map((s) => (
             <button
               key={s.v}
-              onClick={() => setSpeedMs(s.v)}
+              onClick={() => setSpeed(s.v)}
               className={`px-2 py-1 rounded text-[11px] font-bold transition-colors ${
                 speedMs === s.v ? "bg-brand text-white" : "bg-surface-elevated text-text-secondary hover:text-text-primary"
               }`}
@@ -229,7 +224,7 @@ export function LiveMatch() {
         <div className="mx-4 mt-3 flex items-center justify-between px-4 py-3 rounded-xl bg-brand/10 border border-brand/30">
           <p className="text-sm font-extrabold text-brand">🏆 {outcome}</p>
           <button
-            onClick={() => startSim.mutate()}
+            onClick={doStart}
             className="text-xs font-bold text-brand hover:underline"
           >Simulate again →</button>
         </div>

@@ -1,10 +1,27 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
-const WS_BASE = import.meta.env.VITE_WS_URL ?? "ws://localhost:8000";
+// Default to the page origin so Vite's /ws proxy (→ backend) is used in dev.
+// Override with VITE_WS_URL for a direct backend connection if needed.
+function wsBase(): string {
+  const env = import.meta.env.VITE_WS_URL;
+  if (env) return env;
+  const proto = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${window.location.host}`;
+}
 
 type MessageHandler = (data: Record<string, unknown>) => void;
+type SendFn = (data: unknown) => void;
 
-export function useWebSocket(path: string, onMessage: MessageHandler, enabled = true) {
+/**
+ * Connect to a WebSocket room with auto-reconnect. Returns a `send` function
+ * for outbound messages (objects are JSON-encoded). Heartbeat/pong frames are
+ * filtered out before reaching `onMessage`.
+ */
+export function useWebSocket(
+  path: string,
+  onMessage: MessageHandler,
+  enabled = true,
+): { send: SendFn } {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stableHandler = useRef(onMessage);
@@ -13,7 +30,7 @@ export function useWebSocket(path: string, onMessage: MessageHandler, enabled = 
   const connect = useCallback(() => {
     if (!enabled) return;
 
-    const ws = new WebSocket(`${WS_BASE}${path}`);
+    const ws = new WebSocket(`${wsBase()}${path}`);
     wsRef.current = ws;
 
     ws.onmessage = (evt) => {
@@ -28,7 +45,6 @@ export function useWebSocket(path: string, onMessage: MessageHandler, enabled = 
     };
 
     ws.onopen = () => {
-      // heartbeat every 25s
       const hb = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send("ping");
       }, 25000);
@@ -36,7 +52,6 @@ export function useWebSocket(path: string, onMessage: MessageHandler, enabled = 
     };
 
     ws.onclose = () => {
-      // Reconnect after 3 seconds
       reconnectTimer.current = setTimeout(() => connect(), 3000);
     };
 
@@ -50,4 +65,13 @@ export function useWebSocket(path: string, onMessage: MessageHandler, enabled = 
       wsRef.current?.close();
     };
   }, [connect]);
+
+  const send = useCallback<SendFn>((data) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(typeof data === "string" ? data : JSON.stringify(data));
+    }
+  }, []);
+
+  return { send };
 }

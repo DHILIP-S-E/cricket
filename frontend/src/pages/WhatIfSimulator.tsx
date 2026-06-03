@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "../lib/query";
 import { Sparkles, Target, TrendingUp, AlertTriangle } from "lucide-react";
 import { liveApi } from "../api/cricket";
@@ -6,6 +6,16 @@ import type { WhatIfScenario } from "../types/cricket";
 import {
   Card, CardHeader, Stat, PageHeader, Spinner, WinProbBar, RiskMeter,
 } from "../components/ui";
+
+/** Coalesce rapid changes (e.g. dragging a slider) into one value. */
+function useDebounced<T>(value: T, delay = 250): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
 
 const DEFAULT: WhatIfScenario = {
   target: 180,
@@ -22,10 +32,12 @@ export function WhatIfSimulator() {
   const set = (key: keyof WhatIfScenario) => (value: number) =>
     setScenario((s) => ({ ...s, [key]: value }));
 
-  // Re-runs the ML model whenever any input changes (keyed on the scenario).
+  // Streams a fresh ML prediction as you move the sliders. Debounced so a
+  // drag fires one request when you settle, not one per pixel.
+  const liveScenario = useDebounced(scenario, 250);
   const { data, isFetching } = useQuery({
-    queryKey: ["whatif", scenario],
-    queryFn: () => liveApi.simulate(scenario),
+    queryKey: ["whatif", liveScenario],
+    queryFn: () => liveApi.simulate(liveScenario),
     placeholderData: (prev) => prev,
   });
 
